@@ -83,7 +83,7 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
     event Redeemed(address indexed redeemer, address indexed receiver, uint256 usdrAmount, uint256 usdcAmount);
 
     /// @notice Emitted on every funding; each one resets the sweep clock.
-    event Funded(address indexed funder, uint256 usdcAmount);
+    event Funded(address indexed funder, uint256 usdcAmount, uint256 sweepUnlockTime);
 
     /// @notice Emitted when the owner sweeps remaining USDC after the timelock.
     event Swept(address indexed to, uint256 usdcAmount);
@@ -180,7 +180,11 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
         if (usdcAmount == 0) revert ZeroAmount();
         lastFundingTime = block.timestamp;
         usdc.safeTransferFrom(msg.sender, address(this), usdcAmount);
-        emit Funded(msg.sender, usdcAmount);
+        uint256 unlockTime;
+        unchecked {
+            unlockTime = block.timestamp + SWEEP_DELAY; // see {sweep}: cannot overflow
+        }
+        emit Funded(msg.sender, usdcAmount, unlockTime);
     }
 
     /// @notice Sweeps the contract's entire USDC balance to `to`. Only callable by the

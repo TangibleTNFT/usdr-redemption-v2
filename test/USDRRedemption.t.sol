@@ -324,7 +324,7 @@ contract USDRRedemptionTest is Test {
         vm.warp(t0 + 3 days);
 
         vm.expectEmit(true, true, true, true, address(redemption));
-        emit USDRRedemption.Funded(owner, 500 * ONE_USDC);
+        emit USDRRedemption.Funded(owner, 500 * ONE_USDC, t0 + 3 days + 180 days);
         _fund(500 * ONE_USDC);
 
         assertEq(redemption.availableUSDC(), 500 * ONE_USDC);
