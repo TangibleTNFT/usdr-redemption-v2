@@ -502,6 +502,23 @@ contract USDRRedemptionTest is Test {
         assertEq(redemption.maxRedeemableUSDR(), (541_701 * ONE_USDR) / RATE);
     }
 
+    function test_maxRedeemable_returnsZeroAtDustBalance() public {
+        // L-01: at 1 raw USDC unit the inverse-rounded amount (1846 USDR) previews to a
+        // zero payout, so the helper must report 0 rather than an amount that reverts.
+        _fund(1);
+        uint256 maxUsdr = redemption.maxRedeemableUSDR();
+        assertEq(maxUsdr, 0, "must not advertise a reverting amount");
+        assertEq(redemption.previewRedeem((1 * ONE_USDR) / RATE), 0); // the old, reverting value
+
+        // One unit more is enough to pay out, so the helper resumes advertising a usable amount.
+        _fund(1);
+        maxUsdr = redemption.maxRedeemableUSDR();
+        assertGt(redemption.previewRedeem(maxUsdr), 0);
+        _giveUsdr(alice, maxUsdr);
+        vm.prank(alice);
+        redemption.redeem(maxUsdr); // does not revert
+    }
+
     function testFuzz_maxRedeemableUSDR_neverReverts(uint256 funding) public {
         funding = bound(funding, 1, 1e8 * ONE_USDC);
         _fund(funding);

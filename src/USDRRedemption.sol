@@ -208,8 +208,16 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuard {
     /// @dev    Rounded down, so redeeming exactly this amount always pays out within the
     ///         available balance. Intended for UIs sizing a redeem (spec R3); it is a
     ///         conservative bound and can change with every block (FCFS race).
-    function maxRedeemableUSDR() external view returns (uint256) {
-        return (availableUSDC() * USDR_UNIT) / rate;
+    ///
+    ///         At a dust balance the inverse-rounded amount can still preview to a zero
+    ///         payout (e.g. 1 raw USDC unit -> 1846 USDR, which {previewRedeem}s to 0 and
+    ///         would revert with {ZeroPayout}). In that case this returns 0 rather than
+    ///         advertising an amount that {redeem} would reject.
+    /// @return m The largest USDR amount whose {previewRedeem} is non-zero and fits within
+    ///           the available USDC, or 0 when no non-reverting redemption is possible.
+    function maxRedeemableUSDR() external view returns (uint256 m) {
+        m = (availableUSDC() * USDR_UNIT) / rate;
+        if (previewRedeem(m) == 0) return 0; // never advertise an amount that would revert
     }
 
     /// @notice Earliest timestamp at which the owner may sweep remaining USDC.
