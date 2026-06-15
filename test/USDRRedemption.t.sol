@@ -84,6 +84,23 @@ contract USDRRedemptionTest is Test {
         new USDRRedemption(address(usdr), address(usdc), RATE, address(0));
     }
 
+    function test_constructor_revertsOnIdenticalTokens() public {
+        vm.expectRevert(USDRRedemption.IdenticalTokens.selector);
+        new USDRRedemption(address(usdr), address(usdr), RATE, owner);
+    }
+
+    function test_constructor_revertsOnWrongDecimals() public {
+        // USDC (6 decimals) in the USDR slot fails the 9-decimal self-check.
+        vm.expectRevert(USDRRedemption.UnexpectedDecimals.selector);
+        new USDRRedemption(address(usdc), address(usdr), RATE, owner);
+    }
+
+    function test_constructor_emitsDeployed() public {
+        vm.expectEmit(true, true, true, true);
+        emit USDRRedemption.Deployed(address(usdr), address(usdc), RATE, owner);
+        new USDRRedemption(address(usdr), address(usdc), RATE, owner);
+    }
+
     // -----------------------------------------------------------------
     // Rate math (previewRedeem)
     // -----------------------------------------------------------------

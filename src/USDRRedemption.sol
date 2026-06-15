@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
@@ -90,9 +91,16 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
     /// @notice Emitted when the owner rescues a stray (non-USDC) token.
     event Rescued(address indexed token, address indexed to, uint256 amount);
 
+    /// @notice Emitted once at deployment, capturing the immutable configuration.
+    event Deployed(address indexed usdr, address indexed usdc, uint256 rate, address indexed owner);
+
     error ZeroAddress();
     error ZeroAmount();
     error ZeroRate();
+    /// @dev The USDR and USDC addresses must differ.
+    error IdenticalTokens();
+    /// @dev USDR must report 9 decimals and USDC 6, matching USDR_UNIT and the rate's units.
+    error UnexpectedDecimals();
     /// @dev The redemption would pay out zero USDC (amount too small for the rate).
     error ZeroPayout();
     /// @dev The contract's USDC balance cannot cover the full payout.
@@ -113,11 +121,18 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
     /// @param owner_ Contract owner — a Gnosis Safe multisig in production.
     constructor(address usdr_, address usdc_, uint256 rate_, address owner_) Ownable(owner_) {
         if (usdr_ == address(0) || usdc_ == address(0)) revert ZeroAddress();
+        if (usdr_ == usdc_) revert IdenticalTokens();
         if (rate_ == 0) revert ZeroRate();
+        // Self-check the decimal assumptions baked into USDR_UNIT (1e9) and the 6-decimal
+        // rate, so a misconfigured token deployment fails fast instead of mispricing payouts.
+        if (IERC20Metadata(usdr_).decimals() != 9 || IERC20Metadata(usdc_).decimals() != 6) {
+            revert UnexpectedDecimals();
+        }
         usdr = IUSDR(usdr_);
         usdc = IERC20(usdc_);
         rate = rate_;
         lastFundingTime = block.timestamp;
+        emit Deployed(usdr_, usdc_, rate_, owner_);
     }
 
     // ---------------------------------------------------------------------
