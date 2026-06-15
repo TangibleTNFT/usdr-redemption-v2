@@ -158,7 +158,7 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
         usdcAmount = previewRedeem(usdrAmount);
         if (usdcAmount == 0) revert ZeroPayout();
 
-        uint256 available = usdc.balanceOf(address(this));
+        uint256 available = availableUSDC();
         if (usdcAmount > available) revert InsufficientUSDC(usdcAmount, available);
 
         // Burn USDR straight from the redeemer (allowance-based; never custodied here),
@@ -195,7 +195,7 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
             unlockTime = lastFundingTime + SWEEP_DELAY;
         }
         if (block.timestamp < unlockTime) revert SweepLocked(unlockTime);
-        uint256 balance = usdc.balanceOf(address(this));
+        uint256 balance = availableUSDC();
         usdc.safeTransfer(to, balance);
         emit Swept(to, balance);
     }
