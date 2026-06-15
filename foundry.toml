@@ -3,6 +3,10 @@ src = "src"
 out = "out"
 libs = ["lib"]
 solc_version = "0.8.30"
+# Polygon PoS supports EIP-1153 (transient storage, used by ReentrancyGuardTransient) since
+# the Napoli upgrade. Pin Cancun so the build never emits post-Cancun opcodes the target may
+# not support; the toolchain default would otherwise resolve to a newer EVM version.
+evm_version = "cancun"
 optimizer = true
 optimizer_runs = 1000
 

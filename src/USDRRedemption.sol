@@ -5,7 +5,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import {IUSDR} from "./interfaces/IUSDR.sol";
 
@@ -38,9 +38,11 @@ import {IUSDR} from "./interfaces/IUSDR.sol";
 ///
 ///         Reentrancy: neither token has transfer hooks and the contract keeps no
 ///         mutable accounting, but both tokens are upgradeable proxies, so a cheap
-///         nonReentrant guard is kept on redeem as defense in depth. The contract is
-///         deliberately non-upgradeable.
-contract USDRRedemption is Ownable2Step, ReentrancyGuard {
+///         nonReentrant guard is kept on redeem as defense in depth. It uses the
+///         transient-storage (EIP-1153) guard, which the Polygon PoS deployment target
+///         supports; the build pins evm_version = cancun. The contract is deliberately
+///         non-upgradeable.
+contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
 
     // ---------------------------------------------------------------------
