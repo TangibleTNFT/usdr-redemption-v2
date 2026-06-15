@@ -171,7 +171,12 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuard {
     ///         if never funded).
     function sweep(address to) external onlyOwner {
         if (to == address(0)) revert ZeroAddress();
-        uint256 unlockTime = lastFundingTime + SWEEP_DELAY;
+        // `lastFundingTime` is a block timestamp (< 2^32 for centuries) and SWEEP_DELAY is
+        // a 180-day constant, so the sum cannot overflow uint256 — skip the checked-add guard.
+        uint256 unlockTime;
+        unchecked {
+            unlockTime = lastFundingTime + SWEEP_DELAY;
+        }
         if (block.timestamp < unlockTime) revert SweepLocked(unlockTime);
         uint256 balance = usdc.balanceOf(address(this));
         usdc.safeTransfer(to, balance);
@@ -221,7 +226,11 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuard {
     }
 
     /// @notice Earliest timestamp at which the owner may sweep remaining USDC.
+    /// @return The timestamp `lastFundingTime + SWEEP_DELAY` (cannot overflow; see {sweep}).
     function sweepUnlockTime() external view returns (uint256) {
-        return lastFundingTime + SWEEP_DELAY;
+        // See {sweep}: a block timestamp plus a 180-day constant cannot overflow uint256.
+        unchecked {
+            return lastFundingTime + SWEEP_DELAY;
+        }
     }
 }
