@@ -176,7 +176,7 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
     /// @notice Pulls `usdcAmount` USDC from the owner into the contract and resets the
     ///         6-month sweep clock. Owner-only so dust deposits can't grief the clock.
     /// @dev    The owner must have approved this contract for `usdcAmount` USDC first.
-    function fund(uint256 usdcAmount) external onlyOwner {
+    function fund(uint256 usdcAmount) external onlyOwner nonReentrant {
         if (usdcAmount == 0) revert ZeroAmount();
         lastFundingTime = block.timestamp;
         usdc.safeTransferFrom(msg.sender, address(this), usdcAmount);
@@ -186,7 +186,7 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
     /// @notice Sweeps the contract's entire USDC balance to `to`. Only callable by the
     ///         owner once 180 days have passed since the last funding (or deployment,
     ///         if never funded).
-    function sweep(address to) external onlyOwner {
+    function sweep(address to) external onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
         // `lastFundingTime` is a block timestamp (< 2^32 for centuries) and SWEEP_DELAY is
         // a 180-day constant, so the sum cannot overflow uint256 — skip the checked-add guard.
@@ -204,7 +204,7 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
     /// @dev    USDC is explicitly excluded so this can never bypass the sweep timelock
     ///         (I5). USDR is never held by this contract (burned straight from holders),
     ///         so any USDR balance is itself a stray transfer and is recoverable.
-    function rescueERC20(address token, address to) external onlyOwner {
+    function rescueERC20(address token, address to) external onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
         if (token == address(usdc)) revert CannotRescueUSDC();
         uint256 balance = IERC20(token).balanceOf(address(this));
