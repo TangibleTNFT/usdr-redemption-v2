@@ -9,9 +9,11 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import {IUSDR} from "./interfaces/IUSDR.sol";
+import {IUSDRRedemption} from "./interfaces/IUSDRRedemption.sol";
 
 /// @title USDR Redemption v2
-/// @notice Atomic, stateless, fixed-rate, first-come-first-served USDR -> USDC swap.
+/// @notice Atomic, fixed-rate, first-come-first-served USDR -> USDC swap with no per-user
+///         state (the only mutable storage is the global `lastFundingTime` sweep clock).
 ///
 ///         A holder grants this contract a USDR allowance and calls {redeem}. In one
 ///         transaction the contract burns the USDR directly from the holder (it never
@@ -43,72 +45,39 @@ import {IUSDR} from "./interfaces/IUSDR.sol";
 ///         transient-storage (EIP-1153) guard, which the Polygon PoS deployment target
 ///         supports; the build pins evm_version = cancun. The contract is deliberately
 ///         non-upgradeable.
-contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
+contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient, IUSDRRedemption {
     using SafeERC20 for IERC20;
 
     // ---------------------------------------------------------------------
     // Constants & immutables
     // ---------------------------------------------------------------------
 
-    /// @notice One whole USDR in raw units (USDR has 9 decimals).
-    uint256 public constant USDR_UNIT = 1e9;
+    /// @inheritdoc IUSDRRedemption
+    uint256 public constant override USDR_UNIT = 1e9;
 
-    /// @notice Time after the last funding before the owner may sweep USDC ("6 months").
-    uint256 public constant SWEEP_DELAY = 180 days;
+    /// @inheritdoc IUSDRRedemption
+    uint256 public constant override SWEEP_DELAY = 180 days;
 
-    /// @notice The USDR token (9 decimals); burned from redeemers via allowance.
-    IUSDR public immutable usdr;
+    /// @inheritdoc IUSDRRedemption
+    IUSDR public immutable override usdr;
 
-    /// @notice The USDC token paid out (6 decimals); native USDC or USDC.e, fixed at deploy.
-    IERC20 public immutable usdc;
+    /// @inheritdoc IUSDRRedemption
+    IERC20 public immutable override usdc;
 
-    /// @notice Redemption rate in USDC raw units (6 decimals) per 1 whole USDR.
-    /// @dev    e.g. $0.54 -> 540_000; $0.5417 -> 541_700. Precision is $0.000001.
-    ///         Payout = usdrAmount * rate / 1e9, rounded down.
-    uint256 public immutable rate;
+    /// @inheritdoc IUSDRRedemption
+    /// @dev e.g. $0.54 -> 540_000; $0.5417 -> 541_700. Precision is $0.000001.
+    ///      Payout = usdrAmount * rate / 1e9, rounded down.
+    uint256 public immutable override rate;
 
     // ---------------------------------------------------------------------
     // Storage
     // ---------------------------------------------------------------------
 
-    /// @notice Timestamp of the most recent {fund} call (deployment time before any).
-    ///         The owner may sweep USDC from `lastFundingTime + SWEEP_DELAY` onward.
-    uint256 public lastFundingTime;
+    /// @inheritdoc IUSDRRedemption
+    /// @dev The owner may sweep USDC from `lastFundingTime + SWEEP_DELAY` onward.
+    uint256 public override lastFundingTime;
 
-    // ---------------------------------------------------------------------
-    // Events & errors
-    // ---------------------------------------------------------------------
-
-    /// @notice Emitted on every successful redemption.
-    event Redeemed(address indexed redeemer, address indexed receiver, uint256 usdrAmount, uint256 usdcAmount);
-
-    /// @notice Emitted on every funding; each one resets the sweep clock.
-    event Funded(address indexed funder, uint256 usdcAmount, uint256 sweepUnlockTime);
-
-    /// @notice Emitted when the owner sweeps remaining USDC after the timelock.
-    event Swept(address indexed to, uint256 usdcAmount);
-
-    /// @notice Emitted when the owner rescues a stray (non-USDC) token.
-    event Rescued(address indexed token, address indexed to, uint256 amount);
-
-    /// @notice Emitted once at deployment, capturing the immutable configuration.
-    event Deployed(address indexed usdr, address indexed usdc, uint256 rate, address indexed owner);
-
-    error ZeroAddress();
-    error ZeroAmount();
-    error ZeroRate();
-    /// @dev The USDR and USDC addresses must differ.
-    error IdenticalTokens();
-    /// @dev USDR must report 9 decimals and USDC 6, matching USDR_UNIT and the rate's units.
-    error UnexpectedDecimals();
-    /// @dev The redemption would pay out zero USDC (amount too small for the rate).
-    error ZeroPayout();
-    /// @dev The contract's USDC balance cannot cover the full payout.
-    error InsufficientUSDC(uint256 required, uint256 available);
-    /// @dev Sweep attempted before the timelock expired; unlocked at `unlockTime`.
-    error SweepLocked(uint256 unlockTime);
-    /// @dev USDC can only leave via redeem or the timelocked sweep, never via rescue.
-    error CannotRescueUSDC();
+    // Events and errors are declared in {IUSDRRedemption}.
 
     // ---------------------------------------------------------------------
     // Constructor
@@ -139,18 +108,15 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
     // Redemption
     // ---------------------------------------------------------------------
 
-    /// @notice Redeems `usdrAmount` USDR for USDC at the fixed rate, paying msg.sender.
-    function redeem(uint256 usdrAmount) external returns (uint256) {
+    /// @inheritdoc IUSDRRedemption
+    function redeem(uint256 usdrAmount) external override returns (uint256) {
         return _redeem(usdrAmount, msg.sender);
     }
 
-    /// @notice Redeems `usdrAmount` USDR for USDC at the fixed rate, paying `receiver`.
-    /// @dev    Requires a prior USDR approval of at least `usdrAmount` to this contract.
-    ///         All-or-nothing: reverts unless the full payout can be made.
-    /// @param  usdrAmount Amount of USDR to redeem, in 9-decimal raw units.
-    /// @param  receiver   USDC recipient; address(0) is treated as msg.sender.
-    /// @return usdcAmount USDC paid out, in 6-decimal raw units.
-    function redeem(uint256 usdrAmount, address receiver) external returns (uint256) {
+    /// @inheritdoc IUSDRRedemption
+    /// @dev Requires a prior USDR approval of at least `usdrAmount` to this contract.
+    ///      All-or-nothing: reverts unless the full payout can be made.
+    function redeem(uint256 usdrAmount, address receiver) external override returns (uint256) {
         return _redeem(usdrAmount, receiver == address(0) ? msg.sender : receiver);
     }
 
@@ -173,10 +139,10 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
     // Funding & wind-down (owner)
     // ---------------------------------------------------------------------
 
-    /// @notice Pulls `usdcAmount` USDC from the owner into the contract and resets the
-    ///         6-month sweep clock. Owner-only so dust deposits can't grief the clock.
-    /// @dev    The owner must have approved this contract for `usdcAmount` USDC first.
-    function fund(uint256 usdcAmount) external onlyOwner nonReentrant {
+    /// @inheritdoc IUSDRRedemption
+    /// @dev Owner-only so dust deposits can't grief the clock; the owner must have approved
+    ///      this contract for `usdcAmount` USDC first.
+    function fund(uint256 usdcAmount) external override onlyOwner nonReentrant {
         if (usdcAmount == 0) revert ZeroAmount();
         lastFundingTime = block.timestamp;
         usdc.safeTransferFrom(msg.sender, address(this), usdcAmount);
@@ -187,10 +153,11 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
         emit Funded(msg.sender, usdcAmount, unlockTime);
     }
 
-    /// @notice Sweeps the contract's entire USDC balance to `to`. Only callable by the
-    ///         owner once 180 days have passed since the last funding (or deployment,
-    ///         if never funded).
-    function sweep(address to) external onlyOwner nonReentrant {
+    /// @inheritdoc IUSDRRedemption
+    /// @dev Callable by the owner once 180 days have passed since the last funding (or
+    ///      deployment, if never funded). Unlike {redeem}, `to` is not zero-coerced — a
+    ///      zero address reverts rather than defaulting to msg.sender.
+    function sweep(address to) external override onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
         // `lastFundingTime` is a block timestamp (< 2^32 for centuries) and SWEEP_DELAY is
         // a 180-day constant, so the sum cannot overflow uint256 — skip the checked-add guard.
@@ -204,11 +171,13 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
         emit Swept(to, balance);
     }
 
-    /// @notice Recovers the full balance of a stray ERC-20 accidentally sent here.
-    /// @dev    USDC is explicitly excluded so this can never bypass the sweep timelock
-    ///         (I5). USDR is never held by this contract (burned straight from holders),
-    ///         so any USDR balance is itself a stray transfer and is recoverable.
-    function rescueERC20(address token, address to) external onlyOwner nonReentrant {
+    /// @inheritdoc IUSDRRedemption
+    /// @dev USDC is explicitly excluded so this can never bypass the sweep timelock (I5).
+    ///      USDR is never held by this contract (burned straight from holders), so any USDR
+    ///      balance is itself a stray transfer and is recoverable. The balance goes to `to`
+    ///      (chosen by the owner, not necessarily the original sender); like {sweep}, `to`
+    ///      is not zero-coerced.
+    function rescueERC20(address token, address to) external override onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
         if (token == address(usdc)) revert CannotRescueUSDC();
         uint256 balance = IERC20(token).balanceOf(address(this));
@@ -220,35 +189,35 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient {
     // Views
     // ---------------------------------------------------------------------
 
-    /// @notice USDC payout for `usdrAmount` USDR at the fixed rate, rounded down.
-    function previewRedeem(uint256 usdrAmount) public view returns (uint256) {
+    /// @inheritdoc IUSDRRedemption
+    /// @dev Kept `public` (not `external`): {_redeem} and {maxRedeemableUSDR} call it internally.
+    function previewRedeem(uint256 usdrAmount) public view override returns (uint256) {
         return (usdrAmount * rate) / USDR_UNIT;
     }
 
-    /// @notice USDC currently available to pay redemptions (the live balance).
-    function availableUSDC() public view returns (uint256) {
+    /// @inheritdoc IUSDRRedemption
+    /// @dev Kept `public` (not `external`): {_redeem}, {sweep} and {maxRedeemableUSDR} call it.
+    function availableUSDC() public view override returns (uint256) {
         return usdc.balanceOf(address(this));
     }
 
-    /// @notice Largest USDR amount guaranteed to redeem without reverting right now.
-    /// @dev    Rounded down, so redeeming exactly this amount always pays out within the
-    ///         available balance. Intended for UIs sizing a redeem (spec R3); it is a
-    ///         conservative bound and can change with every block (FCFS race).
-    ///
-    ///         At a dust balance the inverse-rounded amount can still preview to a zero
-    ///         payout (e.g. 1 raw USDC unit -> 1846 USDR, which {previewRedeem}s to 0 and
-    ///         would revert with {ZeroPayout}). In that case this returns 0 rather than
-    ///         advertising an amount that {redeem} would reject.
+    /// @inheritdoc IUSDRRedemption
+    /// @dev Rounded down, so redeeming exactly this amount always pays out within the
+    ///      available balance. Intended for UIs sizing a redeem (spec R3); a conservative
+    ///      bound that can change with every block (FCFS race). At a dust balance the
+    ///      inverse-rounded amount can preview to zero (e.g. 1 raw USDC unit -> 1846 USDR,
+    ///      which {previewRedeem}s to 0 and would revert with {ZeroPayout}); this returns 0
+    ///      rather than advertising an amount {redeem} would reject.
     /// @return m The largest USDR amount whose {previewRedeem} is non-zero and fits within
     ///           the available USDC, or 0 when no non-reverting redemption is possible.
-    function maxRedeemableUSDR() external view returns (uint256 m) {
+    function maxRedeemableUSDR() external view override returns (uint256 m) {
         m = (availableUSDC() * USDR_UNIT) / rate;
         if (previewRedeem(m) == 0) return 0; // never advertise an amount that would revert
     }
 
-    /// @notice Earliest timestamp at which the owner may sweep remaining USDC.
-    /// @return The timestamp `lastFundingTime + SWEEP_DELAY` (cannot overflow; see {sweep}).
-    function sweepUnlockTime() external view returns (uint256) {
+    /// @inheritdoc IUSDRRedemption
+    /// @dev Cannot overflow; see {sweep}.
+    function sweepUnlockTime() external view override returns (uint256) {
         // See {sweep}: a block timestamp plus a 180-day constant cannot overflow uint256.
         unchecked {
             return lastFundingTime + SWEEP_DELAY;

@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {USDRRedemption} from "../../src/USDRRedemption.sol";
+import {IUSDRRedemption} from "../../src/interfaces/IUSDRRedemption.sol";
 
 interface IUSDRToken is IERC20 {
     function burn(address account, uint256 amount) external;
@@ -105,7 +106,7 @@ abstract contract USDRRedemptionForkTestBase is Test {
     function test_fork_redeem_revertsOnZeroPayout() public {
         vm.startPrank(HOLDER);
         usdr.approve(address(redemption), 1);
-        vm.expectRevert(USDRRedemption.ZeroPayout.selector);
+        vm.expectRevert(IUSDRRedemption.ZeroPayout.selector);
         redemption.redeem(1); // 1e-9 USDR rounds to zero USDC
         vm.stopPrank();
     }
@@ -119,7 +120,7 @@ abstract contract USDRRedemptionForkTestBase is Test {
         vm.startPrank(HOLDER);
         usdr.approve(address(redemption), holderBalance);
         vm.expectRevert(
-            abi.encodeWithSelector(USDRRedemption.InsufficientUSDC.selector, required, FUNDING)
+            abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, required, FUNDING)
         );
         redemption.redeem(holderBalance);
         vm.stopPrank();
@@ -151,7 +152,7 @@ abstract contract USDRRedemptionForkTestBase is Test {
 
         uint256 unlock = redemption.sweepUnlockTime();
         vm.warp(unlock - 1);
-        vm.expectRevert(abi.encodeWithSelector(USDRRedemption.SweepLocked.selector, unlock));
+        vm.expectRevert(abi.encodeWithSelector(IUSDRRedemption.SweepLocked.selector, unlock));
         redemption.sweep(treasury);
 
         vm.warp(unlock);

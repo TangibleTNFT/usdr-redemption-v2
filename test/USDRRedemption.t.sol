@@ -7,6 +7,7 @@ import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.so
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {USDRRedemption} from "../src/USDRRedemption.sol";
+import {IUSDRRedemption} from "../src/interfaces/IUSDRRedemption.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 import {MockUSDR} from "./mocks/MockUSDR.sol";
 
@@ -65,17 +66,17 @@ contract USDRRedemptionTest is Test {
     }
 
     function test_constructor_revertsOnZeroUsdr() public {
-        vm.expectRevert(USDRRedemption.ZeroAddress.selector);
+        vm.expectRevert(IUSDRRedemption.ZeroAddress.selector);
         new USDRRedemption(address(0), address(usdc), RATE, owner);
     }
 
     function test_constructor_revertsOnZeroUsdc() public {
-        vm.expectRevert(USDRRedemption.ZeroAddress.selector);
+        vm.expectRevert(IUSDRRedemption.ZeroAddress.selector);
         new USDRRedemption(address(usdr), address(0), RATE, owner);
     }
 
     function test_constructor_revertsOnZeroRate() public {
-        vm.expectRevert(USDRRedemption.ZeroRate.selector);
+        vm.expectRevert(IUSDRRedemption.ZeroRate.selector);
         new USDRRedemption(address(usdr), address(usdc), 0, owner);
     }
 
@@ -85,19 +86,19 @@ contract USDRRedemptionTest is Test {
     }
 
     function test_constructor_revertsOnIdenticalTokens() public {
-        vm.expectRevert(USDRRedemption.IdenticalTokens.selector);
+        vm.expectRevert(IUSDRRedemption.IdenticalTokens.selector);
         new USDRRedemption(address(usdr), address(usdr), RATE, owner);
     }
 
     function test_constructor_revertsOnWrongDecimals() public {
         // USDC (6 decimals) in the USDR slot fails the 9-decimal self-check.
-        vm.expectRevert(USDRRedemption.UnexpectedDecimals.selector);
+        vm.expectRevert(IUSDRRedemption.UnexpectedDecimals.selector);
         new USDRRedemption(address(usdc), address(usdr), RATE, owner);
     }
 
     function test_constructor_emitsDeployed() public {
         vm.expectEmit(true, true, true, true);
-        emit USDRRedemption.Deployed(address(usdr), address(usdc), RATE, owner);
+        emit IUSDRRedemption.Deployed(address(usdr), address(usdc), RATE, owner);
         new USDRRedemption(address(usdr), address(usdc), RATE, owner);
     }
 
@@ -139,7 +140,7 @@ contract USDRRedemptionTest is Test {
         uint256 expectedUsdc = 100 * RATE; // 54.17 USDC
 
         vm.expectEmit(true, true, true, true, address(redemption));
-        emit USDRRedemption.Redeemed(alice, alice, 100 * ONE_USDR, expectedUsdc);
+        emit IUSDRRedemption.Redeemed(alice, alice, 100 * ONE_USDR, expectedUsdc);
         vm.prank(alice);
         uint256 paid = redemption.redeem(100 * ONE_USDR);
 
@@ -157,7 +158,7 @@ contract USDRRedemptionTest is Test {
         _giveUsdr(alice, 10 * ONE_USDR);
 
         vm.expectEmit(true, true, true, true, address(redemption));
-        emit USDRRedemption.Redeemed(alice, bob, 10 * ONE_USDR, 10 * RATE);
+        emit IUSDRRedemption.Redeemed(alice, bob, 10 * ONE_USDR, 10 * RATE);
         vm.prank(alice);
         uint256 paid = redemption.redeem(10 * ONE_USDR, bob);
 
@@ -182,10 +183,10 @@ contract USDRRedemptionTest is Test {
         _giveUsdr(alice, ONE_USDR);
 
         vm.startPrank(alice);
-        vm.expectRevert(USDRRedemption.ZeroPayout.selector);
+        vm.expectRevert(IUSDRRedemption.ZeroPayout.selector);
         redemption.redeem(0);
         // 1846 raw units round down to zero USDC at $0.5417 — no burning USDR for nothing.
-        vm.expectRevert(USDRRedemption.ZeroPayout.selector);
+        vm.expectRevert(IUSDRRedemption.ZeroPayout.selector);
         redemption.redeem(1_846);
         vm.stopPrank();
     }
@@ -195,7 +196,7 @@ contract USDRRedemptionTest is Test {
         _giveUsdr(alice, 100 * ONE_USDR); // needs 54.17 USDC, only 50 on hand
 
         vm.expectRevert(
-            abi.encodeWithSelector(USDRRedemption.InsufficientUSDC.selector, 100 * RATE, 50 * ONE_USDC)
+            abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, 100 * RATE, 50 * ONE_USDC)
         );
         vm.prank(alice);
         redemption.redeem(100 * ONE_USDR);
@@ -203,7 +204,7 @@ contract USDRRedemptionTest is Test {
 
     function test_redeem_revertsWhenNeverFunded() public {
         _giveUsdr(alice, ONE_USDR);
-        vm.expectRevert(abi.encodeWithSelector(USDRRedemption.InsufficientUSDC.selector, RATE, 0));
+        vm.expectRevert(abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, RATE, 0));
         vm.prank(alice);
         redemption.redeem(ONE_USDR);
     }
@@ -220,7 +221,7 @@ contract USDRRedemptionTest is Test {
         // ...and one unit short of the payout reverts (all-or-nothing).
         _fund(100 * RATE - 1);
         vm.expectRevert(
-            abi.encodeWithSelector(USDRRedemption.InsufficientUSDC.selector, 100 * RATE, 100 * RATE - 1)
+            abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, 100 * RATE, 100 * RATE - 1)
         );
         vm.prank(alice);
         redemption.redeem(100 * ONE_USDR);
@@ -262,7 +263,7 @@ contract USDRRedemptionTest is Test {
         // Bob's full redemption no longer fits...
         vm.expectRevert(
             abi.encodeWithSelector(
-                USDRRedemption.InsufficientUSDC.selector, 100 * RATE, 60 * ONE_USDC - 100 * RATE
+                IUSDRRedemption.InsufficientUSDC.selector, 100 * RATE, 60 * ONE_USDC - 100 * RATE
             )
         );
         vm.prank(bob);
@@ -283,7 +284,7 @@ contract USDRRedemptionTest is Test {
         redemption.redeem(100 * ONE_USDR);
 
         // Pot empty — next redeem reverts; a top-up re-enables it.
-        vm.expectRevert(abi.encodeWithSelector(USDRRedemption.InsufficientUSDC.selector, 100 * RATE, 0));
+        vm.expectRevert(abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, 100 * RATE, 0));
         vm.prank(alice);
         redemption.redeem(100 * ONE_USDR);
 
@@ -303,7 +304,7 @@ contract USDRRedemptionTest is Test {
         vm.prank(alice);
         if (payout > funding) {
             vm.expectRevert(
-                abi.encodeWithSelector(USDRRedemption.InsufficientUSDC.selector, payout, funding)
+                abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, payout, funding)
             );
             redemption.redeem(usdrAmount);
         } else {
@@ -324,7 +325,7 @@ contract USDRRedemptionTest is Test {
         vm.warp(t0 + 3 days);
 
         vm.expectEmit(true, true, true, true, address(redemption));
-        emit USDRRedemption.Funded(owner, 500 * ONE_USDC, t0 + 3 days + 180 days);
+        emit IUSDRRedemption.Funded(owner, 500 * ONE_USDC, t0 + 3 days + 180 days);
         _fund(500 * ONE_USDC);
 
         assertEq(redemption.availableUSDC(), 500 * ONE_USDC);
@@ -353,7 +354,7 @@ contract USDRRedemptionTest is Test {
 
     function test_fund_revertsOnZeroAmount() public {
         vm.prank(owner);
-        vm.expectRevert(USDRRedemption.ZeroAmount.selector);
+        vm.expectRevert(IUSDRRedemption.ZeroAmount.selector);
         redemption.fund(0);
     }
 
@@ -393,7 +394,7 @@ contract USDRRedemptionTest is Test {
 
         vm.warp(unlock - 1);
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(USDRRedemption.SweepLocked.selector, unlock));
+        vm.expectRevert(abi.encodeWithSelector(IUSDRRedemption.SweepLocked.selector, unlock));
         redemption.sweep(owner);
     }
 
@@ -402,7 +403,7 @@ contract USDRRedemptionTest is Test {
         vm.warp(redemption.sweepUnlockTime());
 
         vm.expectEmit(true, true, true, true, address(redemption));
-        emit USDRRedemption.Swept(bob, 100 * ONE_USDC);
+        emit IUSDRRedemption.Swept(bob, 100 * ONE_USDC);
         vm.prank(owner);
         redemption.sweep(bob);
 
@@ -418,7 +419,7 @@ contract USDRRedemptionTest is Test {
         vm.warp(block.timestamp + 1 days); // would have passed the original deadline
         uint256 unlock = redemption.sweepUnlockTime();
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(USDRRedemption.SweepLocked.selector, unlock));
+        vm.expectRevert(abi.encodeWithSelector(IUSDRRedemption.SweepLocked.selector, unlock));
         redemption.sweep(owner);
 
         vm.warp(redemption.sweepUnlockTime());
@@ -434,7 +435,7 @@ contract USDRRedemptionTest is Test {
 
         vm.startPrank(owner);
         vm.expectRevert(
-            abi.encodeWithSelector(USDRRedemption.SweepLocked.selector, redemption.sweepUnlockTime())
+            abi.encodeWithSelector(IUSDRRedemption.SweepLocked.selector, redemption.sweepUnlockTime())
         );
         redemption.sweep(owner);
 
@@ -454,7 +455,7 @@ contract USDRRedemptionTest is Test {
     function test_sweep_revertsOnZeroAddress() public {
         vm.warp(redemption.sweepUnlockTime());
         vm.prank(owner);
-        vm.expectRevert(USDRRedemption.ZeroAddress.selector);
+        vm.expectRevert(IUSDRRedemption.ZeroAddress.selector);
         redemption.sweep(address(0));
     }
 
@@ -467,7 +468,7 @@ contract USDRRedemptionTest is Test {
         stray.mint(address(redemption), 42e6);
 
         vm.expectEmit(true, true, true, true, address(redemption));
-        emit USDRRedemption.Rescued(address(stray), bob, 42e6);
+        emit IUSDRRedemption.Rescued(address(stray), bob, 42e6);
         vm.prank(owner);
         redemption.rescueERC20(address(stray), bob);
 
@@ -487,7 +488,7 @@ contract USDRRedemptionTest is Test {
     function test_rescue_cannotBypassUSDCTimelock() public {
         _fund(100 * ONE_USDC);
         vm.prank(owner);
-        vm.expectRevert(USDRRedemption.CannotRescueUSDC.selector);
+        vm.expectRevert(IUSDRRedemption.CannotRescueUSDC.selector);
         redemption.rescueERC20(address(usdc), owner);
     }
 
@@ -499,7 +500,7 @@ contract USDRRedemptionTest is Test {
 
     function test_rescue_revertsOnZeroAddress() public {
         vm.prank(owner);
-        vm.expectRevert(USDRRedemption.ZeroAddress.selector);
+        vm.expectRevert(IUSDRRedemption.ZeroAddress.selector);
         redemption.rescueERC20(address(usdr), address(0));
     }
 
