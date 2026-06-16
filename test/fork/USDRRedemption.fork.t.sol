@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {stdStorage, StdStorage} from "forge-std/StdStorage.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {USDRRedemption} from "../../src/USDRRedemption.sol";
@@ -24,6 +25,8 @@ interface IFiatToken {
 ///         flavour via {_usdcToken}. Run with POLYGON_RPC_URL set, or fall back to a
 ///         public endpoint (https://chainlist.org/rpcs.json).
 abstract contract USDRRedemptionForkTestBase is Test {
+    using stdStorage for StdStorage;
+
     // Live Polygon addresses (spec §10).
     address internal constant USDR = 0x40379a439D4F6795B6fc9aa5687dB461677A2dBa;
     address internal constant NATIVE_USDC = 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359;
@@ -181,6 +184,33 @@ abstract contract USDRRedemptionForkTestBase is Test {
 
         // The burn was rolled back with the failed payout (all-or-nothing, I1).
         assertEq(usdr.totalSupply(), supplyBefore);
+        assertEq(redemption.availableUSDC(), FUNDING);
+    }
+
+    /// @dev O-07: exercise the live paused-USDR burn branch end to end. The deployed USDR
+    ///      token exposes NO external pause entrypoint (PausableUpgradeable._pause is internal
+    ///      and never wired to a callable function), so the paused state is only reachable via
+    ///      a token upgrade — there is no pause role to impersonate. We therefore force
+    ///      `paused()` true directly in storage (located via stdstore through the getter) and
+    ///      assert redeem reverts because usdr.burn is whenNotPaused, paying out nothing.
+    function test_fork_redeem_revertsWhenUSDRPaused() public {
+        address receiver = makeAddr("pauseReceiver");
+        uint256 redeemAmount = 1_000 * ONE_USDR;
+
+        assertFalse(usdr.paused(), "fixture: USDR should start unpaused");
+        stdstore.target(USDR).sig("paused()").checked_write(true);
+        assertTrue(usdr.paused(), "failed to force USDR into the paused state");
+
+        uint256 supplyBefore = usdr.totalSupply();
+        vm.startPrank(HOLDER);
+        usdr.approve(address(redemption), redeemAmount);
+        vm.expectRevert(); // usdr.burn is whenNotPaused -> reverts while paused
+        redemption.redeem(redeemAmount, receiver);
+        vm.stopPrank();
+
+        // All-or-nothing (I1): the failed burn rolls back, nothing is paid out.
+        assertEq(usdr.totalSupply(), supplyBefore);
+        assertEq(usdc.balanceOf(receiver), 0);
         assertEq(redemption.availableUSDC(), FUNDING);
     }
 
