@@ -6,11 +6,13 @@ import {stdError} from "forge-std/StdError.sol";
 
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import {USDRRedemption} from "../src/USDRRedemption.sol";
 import {IUSDRRedemption} from "../src/interfaces/IUSDRRedemption.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 import {MockUSDR} from "./mocks/MockUSDR.sol";
+import {ReentrantUSDC} from "./mocks/ReentrantUSDC.sol";
 
 contract USDRRedemptionTest is Test {
     // $0.5417 per USDR — deliberately non-round to exercise precision.
@@ -315,6 +317,29 @@ contract USDRRedemptionTest is Test {
             assertEq(usdr.totalSupply(), 0);
             assertEq(redemption.availableUSDC(), funding - payout);
         }
+    }
+
+    /// @dev O-03: a malicious USDC that re-enters redeem during the payout transfer must be
+    ///      stopped by the nonReentrant guard.
+    function test_redeem_reentrancyGuarded() public {
+        ReentrantUSDC evil = new ReentrantUSDC();
+        USDRRedemption r = new USDRRedemption(address(usdr), address(evil), RATE, owner);
+        evil.setTarget(r);
+
+        evil.mint(owner, 1_000 * ONE_USDC);
+        vm.startPrank(owner);
+        evil.approve(address(r), type(uint256).max);
+        r.fund(1_000 * ONE_USDC);
+        vm.stopPrank();
+
+        usdr.mint(alice, 100 * ONE_USDR);
+        vm.prank(alice);
+        usdr.approve(address(r), 100 * ONE_USDR);
+
+        evil.setAttack(true);
+        vm.expectRevert(ReentrancyGuardTransient.ReentrancyGuardReentrantCall.selector);
+        vm.prank(alice);
+        r.redeem(100 * ONE_USDR);
     }
 
     // -----------------------------------------------------------------
