@@ -32,4 +32,7 @@ jobs:
         run: forge build --sizes
 
       - name: Run Forge tests
-        run: forge test -vvv
+        # Fork tests pin a Polygon block and need an archive node; the public RPC used in
+        # CI is pruned and cannot serve state at the pinned block. Run them locally with
+        # POLYGON_RPC_URL set instead.
+        run: forge test -vvv --no-match-path 'test/fork/*'

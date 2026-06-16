@@ -138,9 +138,7 @@ abstract contract USDRRedemptionForkTestBase is Test {
 
         vm.startPrank(HOLDER);
         usdr.approve(address(redemption), holderBalance);
-        vm.expectRevert(
-            abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, required, FUNDING)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, required, FUNDING));
         redemption.redeem(holderBalance);
         vm.stopPrank();
     }

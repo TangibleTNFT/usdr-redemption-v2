@@ -198,9 +198,7 @@ contract USDRRedemptionTest is Test {
         _fund(50 * ONE_USDC);
         _giveUsdr(alice, 100 * ONE_USDR); // needs 54.17 USDC, only 50 on hand
 
-        vm.expectRevert(
-            abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, 100 * RATE, 50 * ONE_USDC)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, 100 * RATE, 50 * ONE_USDC));
         vm.prank(alice);
         redemption.redeem(100 * ONE_USDR);
     }
@@ -223,9 +221,7 @@ contract USDRRedemptionTest is Test {
 
         // ...and one unit short of the payout reverts (all-or-nothing).
         _fund(100 * RATE - 1);
-        vm.expectRevert(
-            abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, 100 * RATE, 100 * RATE - 1)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, 100 * RATE, 100 * RATE - 1));
         vm.prank(alice);
         redemption.redeem(100 * ONE_USDR);
     }
@@ -235,9 +231,7 @@ contract USDRRedemptionTest is Test {
         usdr.mint(alice, ONE_USDR); // no approval
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IERC20Errors.ERC20InsufficientAllowance.selector, address(redemption), 0, ONE_USDR
-            )
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(redemption), 0, ONE_USDR)
         );
         vm.prank(alice);
         redemption.redeem(ONE_USDR);
@@ -268,9 +262,7 @@ contract USDRRedemptionTest is Test {
 
         // Bob's full redemption no longer fits...
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IUSDRRedemption.InsufficientUSDC.selector, 100 * RATE, 60 * ONE_USDC - 100 * RATE
-            )
+            abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, 100 * RATE, 60 * ONE_USDC - 100 * RATE)
         );
         vm.prank(bob);
         redemption.redeem(100 * ONE_USDR);
@@ -309,9 +301,7 @@ contract USDRRedemptionTest is Test {
         uint256 payout = redemption.previewRedeem(usdrAmount);
         vm.prank(alice);
         if (payout > funding) {
-            vm.expectRevert(
-                abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, payout, funding)
-            );
+            vm.expectRevert(abi.encodeWithSelector(IUSDRRedemption.InsufficientUSDC.selector, payout, funding));
             redemption.redeem(usdrAmount);
         } else {
             redemption.redeem(usdrAmount);
@@ -391,9 +381,7 @@ contract USDRRedemptionTest is Test {
         vm.startPrank(owner);
         usdc.approve(address(redemption), 0);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IERC20Errors.ERC20InsufficientAllowance.selector, address(redemption), 0, ONE_USDC
-            )
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(redemption), 0, ONE_USDC)
         );
         redemption.fund(ONE_USDC);
         vm.stopPrank();
@@ -463,9 +451,7 @@ contract USDRRedemptionTest is Test {
         usdc.mint(address(redemption), 7 * ONE_USDC);
 
         vm.startPrank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(IUSDRRedemption.SweepLocked.selector, redemption.sweepUnlockTime())
-        );
+        vm.expectRevert(abi.encodeWithSelector(IUSDRRedemption.SweepLocked.selector, redemption.sweepUnlockTime()));
         redemption.sweep(owner);
 
         vm.warp(redemption.sweepUnlockTime());
