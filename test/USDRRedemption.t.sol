@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {stdError} from "forge-std/StdError.sol";
 
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -459,6 +460,16 @@ contract USDRRedemptionTest is Test {
         redemption.sweep(address(0));
     }
 
+    function test_sweep_zeroBalanceSucceeds() public {
+        // O-30: sweeping an empty contract emits Swept(to, 0) and does not revert.
+        vm.warp(redemption.sweepUnlockTime());
+        vm.expectEmit(true, true, true, true, address(redemption));
+        emit IUSDRRedemption.Swept(bob, 0);
+        vm.prank(owner);
+        redemption.sweep(bob);
+        assertEq(usdc.balanceOf(bob), 0);
+    }
+
     // -----------------------------------------------------------------
     // rescueERC20
     // -----------------------------------------------------------------
@@ -504,6 +515,16 @@ contract USDRRedemptionTest is Test {
         redemption.rescueERC20(address(usdr), address(0));
     }
 
+    function test_rescue_zeroBalanceSucceeds() public {
+        // O-30: rescuing a token the contract holds none of emits Rescued(token, to, 0).
+        MockUSDC stray = new MockUSDC();
+        vm.expectEmit(true, true, true, true, address(redemption));
+        emit IUSDRRedemption.Rescued(address(stray), bob, 0);
+        vm.prank(owner);
+        redemption.rescueERC20(address(stray), bob);
+        assertEq(stray.balanceOf(bob), 0);
+    }
+
     // -----------------------------------------------------------------
     // Views
     // -----------------------------------------------------------------
@@ -516,8 +537,10 @@ contract USDRRedemptionTest is Test {
         assertEq(redemption.availableUSDC(), 541_700);
         assertEq(redemption.maxRedeemableUSDR(), ONE_USDR);
 
-        _fund(1); // 541_701 total: still only 1.000000001846... USDR redeemable
-        assertEq(redemption.maxRedeemableUSDR(), (541_701 * ONE_USDR) / RATE);
+        // O-29: assert an independently-derived literal, not the formula the contract uses.
+        // floor(541_701 * 1e9 / 541_700) = 1_000_001_846 raw USDR (~1.000000001846 USDR).
+        _fund(1); // 541_701 total
+        assertEq(redemption.maxRedeemableUSDR(), 1_000_001_846);
     }
 
     function test_maxRedeemable_returnsZeroAtDustBalance() public {
@@ -550,6 +573,79 @@ contract USDRRedemptionTest is Test {
         _giveUsdr(alice, maxUsdr);
         vm.prank(alice);
         redemption.redeem(maxUsdr);
+    }
+
+    /// @dev O-26: vary the receiver through the two-arg overload; payout must land at the
+    ///      resolved receiver (address(0) -> msg.sender).
+    function testFuzz_redeem_receiverRouting(address receiver, uint256 usdrAmount) public {
+        vm.assume(receiver != owner && receiver != address(redemption));
+        vm.assume(usdc.balanceOf(receiver) == 0);
+        usdrAmount = bound(usdrAmount, 1_847, 1e6 * ONE_USDR); // >= smallest non-zero payout
+
+        uint256 payout = redemption.previewRedeem(usdrAmount);
+        _fund(payout);
+        _giveUsdr(alice, usdrAmount);
+
+        vm.prank(alice);
+        redemption.redeem(usdrAmount, receiver);
+
+        address resolved = receiver == address(0) ? alice : receiver;
+        assertEq(usdc.balanceOf(resolved), payout, "payout must land at the resolved receiver");
+        if (resolved != alice) assertEq(usdc.balanceOf(alice), 0, "redeemer must not be paid");
+    }
+
+    /// @dev O-27: rate math must hold for any rate, not just 541_700. Fresh contract per run.
+    function testFuzz_previewRedeem_parameterizedRate(uint256 rate_, uint256 amount) public {
+        rate_ = bound(rate_, 1, 1e12);
+        USDRRedemption r = new USDRRedemption(address(usdr), address(usdc), rate_, owner);
+        amount = bound(amount, 0, type(uint256).max / rate_); // stay below the product overflow
+
+        uint256 payout = r.previewRedeem(amount);
+        assertEq(payout, (amount * rate_) / ONE_USDR);
+        assertLe(payout * ONE_USDR, amount * rate_);
+        // rate_ == 1 exercises the ZeroPayout boundary: any amount < 1e9 previews to 0.
+        if (rate_ == 1 && amount < ONE_USDR) assertEq(payout, 0);
+    }
+
+    /// @dev O-36: above the multiplication threshold previewRedeem must panic (0x11), never
+    ///      silently wrap. The threshold is ~10 orders of magnitude above real USDR supply,
+    ///      so this only pins the safety property; it is unreachable in practice.
+    function testFuzz_previewRedeem_overflowBoundary(uint256 usdrAmount) public {
+        usdrAmount = bound(usdrAmount, type(uint256).max / RATE + 1, type(uint256).max);
+        vm.expectRevert(stdError.arithmeticError);
+        redemption.previewRedeem(usdrAmount);
+    }
+
+    /// @dev O-21: I4 — user gas is O(1). A redeem after a long fund/redeem history costs the
+    ///      same as a fresh one (no per-user or time-indexed accounting accumulates).
+    function test_redeem_gasConstantAcrossHistory() public {
+        _giveUsdr(alice, 1_000 * ONE_USDR);
+        _fund(1_000 * ONE_USDC);
+
+        // Warm up storage/accounts so the baseline excludes one-time cold-access costs.
+        vm.prank(alice);
+        redemption.redeem(ONE_USDR);
+
+        _fund(1_000 * ONE_USDC);
+        vm.prank(alice);
+        uint256 g = gasleft();
+        redemption.redeem(ONE_USDR);
+        uint256 baseline = g - gasleft();
+
+        for (uint256 i = 0; i < 50; i++) {
+            _fund(1_000 * ONE_USDC);
+            vm.warp(block.timestamp + 1 days);
+            vm.prank(alice);
+            redemption.redeem(ONE_USDR);
+        }
+
+        _fund(1_000 * ONE_USDC);
+        vm.prank(alice);
+        g = gasleft();
+        redemption.redeem(ONE_USDR);
+        uint256 laterCost = g - gasleft();
+
+        assertApproxEqAbs(laterCost, baseline, 200, "redeem gas grew with history");
     }
 
     // -----------------------------------------------------------------
