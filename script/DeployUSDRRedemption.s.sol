@@ -8,7 +8,7 @@ import {USDRRedemption} from "../src/USDRRedemption.sol";
 /// @title  USDRRedemption deployment script (Polygon, chainId 137)
 ///
 /// @notice Deploys the immutable (non-upgradeable) redemption contract. All pending
-///         values from the spec (§11) are deploy-time parameters supplied via env vars:
+///         values are deploy-time parameters supplied via env vars:
 ///
 ///           RATE   - USDC raw units (6 dp) per 1 whole USDR. ~$0.54, exact figure TBC.
 ///                    $0.54 -> 540000, $0.5417 -> 541700. CONFIRM WITH JAG BEFORE DEPLOY.
@@ -50,7 +50,7 @@ import {USDRRedemption} from "../src/USDRRedemption.sol";
 ///         rescueERC20(token, to) — Safe-only recovery for stray tokens; rejects USDC
 ///         so the sweep timelock can never be bypassed.
 contract DeployUSDRRedemption is Script {
-    /// @dev Live Polygon USDR (9 decimals) — spec §10. The old/migrated token at
+    /// @dev Live Polygon USDR (9 decimals). The old/migrated token at
     ///      0xb5dfabd7ff7f83bab83995e72a52b97abb7bcf63 must NOT be used.
     address internal constant DEFAULT_USDR = 0x40379a439D4F6795B6fc9aa5687dB461677A2dBa;
 

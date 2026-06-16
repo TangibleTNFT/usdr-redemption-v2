@@ -8,7 +8,7 @@ pragma solidity ^0.8.24;
 ///      `msg.sender != account` it spends the caller's ERC-20 allowance from `account`.
 ///      It is NOT gated by any burner role, so the redemption contract needs no role grant
 ///      on the USDR token. Note `burn` is `whenNotPaused`: if Tangible pauses USDR,
-///      redemptions revert until it is unpaused (external dependency, spec §4).
+///      redemptions revert until it is unpaused (external dependency).
 interface IUSDR {
     /// @notice Burns `amount` USDR (9-decimal units) from `account`, spending the caller's
     ///         allowance when the caller is not `account` itself.

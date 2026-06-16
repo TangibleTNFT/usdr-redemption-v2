@@ -2,8 +2,7 @@
 
 Atomic, stateless, fixed-rate, first-come-first-served **USDR → USDC** swap on **Polygon**
 (chainId 137). v2 is a deliberate clean break from v1: no epochs, no pro-rata rationing, no
-per-user accounting, no KYC. The full requirements live in
-[`docs/USDR-Redemption-v2-Spec.md`](docs/USDR-Redemption-v2-Spec.md).
+per-user accounting, no KYC.
 
 ## How it works
 
@@ -45,7 +44,7 @@ $0.54   → RATE = 540000
 $0.5417 → RATE = 541700                  // precision: $0.000001
 ```
 
-### Deploy-time parameters (pending values, spec §11)
+### Deploy-time parameters (pending values)
 
 | Parameter | Status |
 |---|---|

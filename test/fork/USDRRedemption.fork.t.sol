@@ -27,7 +27,7 @@ interface IFiatToken {
 abstract contract USDRRedemptionForkTestBase is Test {
     using stdStorage for StdStorage;
 
-    // Live Polygon addresses (spec §10).
+    // Live Polygon addresses.
     address internal constant USDR = 0x40379a439D4F6795B6fc9aa5687dB461677A2dBa;
     address internal constant NATIVE_USDC = 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359;
     address internal constant BRIDGED_USDCE = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
