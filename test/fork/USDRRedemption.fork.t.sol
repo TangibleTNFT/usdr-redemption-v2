@@ -12,6 +12,13 @@ interface IUSDRToken is IERC20 {
     function paused() external view returns (bool);
 }
 
+/// @notice Minimal Circle FiatToken surface (native USDC and bridged USDC.e are both
+///         FiatToken proxies) for driving the blacklist path on a fork.
+interface IFiatToken {
+    function blacklister() external view returns (address);
+    function blacklist(address account) external;
+}
+
 /// @notice Polygon fork integration tests: redeem REAL USDR end to end against the live
 ///         token (allowance-based burn, rebasing balances), parameterized over the USDC
 ///         flavour via {_usdcToken}. Run with POLYGON_RPC_URL set, or fall back to a
@@ -98,9 +105,18 @@ abstract contract USDRRedemptionForkTestBase is Test {
     }
 
     function test_fork_redeem_revertsWithoutApproval() public {
+        uint256 redeemAmount = 1_000 * ONE_USDR;
+        // O-08: pin the revert to the missing-approval path. With funding present, the holder
+        // holding enough USDR, and zero allowance, the only thing that can make redeem revert
+        // is the allowance-spend in burn — so the (token-version-specific) revert reason need
+        // not be hardcoded.
+        assertEq(usdr.allowance(HOLDER, address(redemption)), 0, "fixture: allowance must be 0");
+        assertGe(usdr.balanceOf(HOLDER), redeemAmount, "fixture: holder needs the USDR");
+        assertGe(redemption.availableUSDC(), redemption.previewRedeem(redeemAmount), "fixture: funded");
+
         vm.prank(HOLDER);
         vm.expectRevert(); // real USDR: allowance spend underflows/reverts
-        redemption.redeem(1_000 * ONE_USDR);
+        redemption.redeem(redeemAmount);
     }
 
     function test_fork_redeem_revertsOnZeroPayout() public {
@@ -128,7 +144,9 @@ abstract contract USDRRedemptionForkTestBase is Test {
 
     function test_fork_maxRedeemable_fitsAndRedeems() public {
         uint256 maxUsdr = redemption.maxRedeemableUSDR();
-        assertLe(redemption.previewRedeem(maxUsdr), redemption.availableUSDC());
+        uint256 payout = redemption.previewRedeem(maxUsdr);
+        uint256 availBefore = redemption.availableUSDC();
+        assertLe(payout, availBefore);
         assertGe(usdr.balanceOf(HOLDER), maxUsdr, "fixture: holder cannot cover max");
 
         vm.startPrank(HOLDER);
@@ -136,8 +154,34 @@ abstract contract USDRRedemptionForkTestBase is Test {
         redemption.redeem(maxUsdr);
         vm.stopPrank();
 
-        // Pot is drained below the smallest payable unit.
-        assertLt(redemption.availableUSDC(), RATE / 1e3 + 1);
+        // O-10: assert the exact residual, and that it is below one raw USDC unit + the
+        // sub-unit rounding slack (for rate < 1e9 the leftover after maxRedeemable is <= 1).
+        assertEq(redemption.availableUSDC(), availBefore - payout);
+        assertLe(redemption.availableUSDC(), 1);
+    }
+
+    /// @dev O-28: a USDC-side failure (receiver blacklisted) must revert the whole redeem,
+    ///      rolling back the USDR burn. Exercises the external-token failure path on the
+    ///      live FiatToken.
+    function test_fork_redeem_revertsWhenReceiverBlacklisted() public {
+        address receiver = makeAddr("blacklistedReceiver");
+        uint256 redeemAmount = 1_000 * ONE_USDR;
+
+        IFiatToken token = IFiatToken(_usdcToken());
+        address blacklister = token.blacklister();
+        vm.prank(blacklister);
+        token.blacklist(receiver);
+
+        uint256 supplyBefore = usdr.totalSupply();
+        vm.startPrank(HOLDER);
+        usdr.approve(address(redemption), redeemAmount);
+        vm.expectRevert(); // FiatToken: transfer to a blacklisted account reverts
+        redemption.redeem(redeemAmount, receiver);
+        vm.stopPrank();
+
+        // The burn was rolled back with the failed payout (all-or-nothing, I1).
+        assertEq(usdr.totalSupply(), supplyBefore);
+        assertEq(redemption.availableUSDC(), FUNDING);
     }
 
     function test_fork_fund_sweep_lifecycle() public {

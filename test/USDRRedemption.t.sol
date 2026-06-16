@@ -248,7 +248,10 @@ contract USDRRedemptionTest is Test {
         _giveUsdr(alice, ONE_USDR);
         usdr.setPaused(true);
 
-        vm.expectRevert("Pausable: paused");
+        // O-07: assert only that the burn branch reverts — not the mock's exact revert
+        // string, which does not match the live USDR token. The fork suite covers the real
+        // paused-token behavior end to end.
+        vm.expectRevert();
         vm.prank(alice);
         redemption.redeem(ONE_USDR);
     }
