@@ -81,7 +81,7 @@ interface IUSDRRedemption {
     /// @notice The USDR token (9 decimals); burned from redeemers via allowance.
     function usdr() external view returns (IUSDR);
 
-    /// @notice The USDC token paid out (6 decimals); native USDC or USDC.e, fixed at deploy.
+    /// @notice The USDC token paid out (6 decimals); native USDC, fixed at deploy.
     function usdc() external view returns (IERC20);
 
     /// @notice Redemption rate in USDC raw units (6 decimals) per 1 whole USDR.

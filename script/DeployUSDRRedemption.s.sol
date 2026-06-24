@@ -12,9 +12,8 @@ import {USDRRedemption} from "../src/USDRRedemption.sol";
 ///
 ///           RATE   - USDC raw units (6 dp) per 1 whole USDR. ~$0.54, exact figure TBC.
 ///                    $0.54 -> 540000, $0.5417 -> 541700. CONFIRM WITH JAG BEFORE DEPLOY.
-///           USDC   - the USDC token paid out (TBC):
+///           USDC   - the USDC token paid out (decided: native USDC, not USDC.e):
 ///                      native USDC: 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359
-///                      USDC.e:      0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174
 ///           OWNER  - the Gnosis Safe multisig that will own the contract.
 ///           USDR   - optional override; defaults to the live Polygon USDR token.
 ///

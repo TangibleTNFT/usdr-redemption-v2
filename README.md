@@ -49,7 +49,7 @@ $0.5417 → RATE = 541700                  // precision: $0.000001
 | Parameter | Status |
 |---|---|
 | Exact rate (~$0.54) | **TBC** — pass as `RATE` |
-| Native USDC (`0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`) vs USDC.e (`0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174`) | **TBC** — pass as `USDC` |
+| USDC token — **native USDC** (`0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`), not USDC.e | **decided** — pass as `USDC` |
 | 6 months | fixed at `180 days` |
 | Upgradeability | none — immutable deploy |
 
@@ -57,7 +57,7 @@ $0.5417 → RATE = 541700                  // precision: $0.000001
 
 ```bash
 RATE=541700 \                                       # USDC units per 1 USDR — confirm final figure first
-USDC=0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359 \   # or USDC.e — confirm choice first
+USDC=0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359 \   # native USDC (decided)
 OWNER=<gnosis-safe-address> \
 forge script script/DeployUSDRRedemption.s.sol \
   --rpc-url "$POLYGON_RPC_URL" --broadcast --verify -i 1 --sender <deployer>
