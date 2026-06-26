@@ -65,7 +65,7 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient, IUSDRRedempti
     IERC20 public immutable override usdc;
 
     /// @inheritdoc IUSDRRedemption
-    /// @dev e.g. $0.54 -> 540_000; $0.5417 -> 541_700. Precision is $0.000001.
+    /// @dev Deploy value $0.532 -> 532_000 (e.g. $0.5417 -> 541_700). Precision is $0.000001.
     ///      Payout = usdrAmount * rate / 1e9, rounded down.
     uint256 public immutable override rate;
 
@@ -86,7 +86,7 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient, IUSDRRedempti
     /// @param usdr_  USDR token address (constructor arg for testability;
     ///               0x40379a439D4F6795B6fc9aa5687dB461677A2dBa on Polygon).
     /// @param usdc_  USDC token address (native USDC 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359 on Polygon).
-    /// @param rate_  USDC raw units per whole USDR (e.g. 541_700 for $0.5417).
+    /// @param rate_  USDC raw units per whole USDR (532_000 for $0.532, the deploy value).
     /// @param owner_ Contract owner — a Gnosis Safe multisig in production.
     constructor(address usdr_, address usdc_, uint256 rate_, address owner_) Ownable(owner_) {
         if (usdr_ == address(0) || usdc_ == address(0)) revert ZeroAddress();

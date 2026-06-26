@@ -40,7 +40,7 @@ no proxy, no upgrade path, and the rate/token addresses can never change.
 
 ```
 usdcOut = usdrAmount * rate / 1e9        // floor
-$0.54   → RATE = 540000
+$0.532  → RATE = 532000                  // final deploy value
 $0.5417 → RATE = 541700                  // precision: $0.000001
 ```
 
@@ -48,7 +48,7 @@ $0.5417 → RATE = 541700                  // precision: $0.000001
 
 | Parameter | Status |
 |---|---|
-| Exact rate (~$0.54) | **TBC** — pass as `RATE` |
+| Rate — **$0.532** (`RATE = 532000`) | **final** — pass as `RATE` |
 | USDC token — **native USDC** (`0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`), not USDC.e | **decided** — pass as `USDC` |
 | 6 months | fixed at `180 days` |
 | Upgradeability | none — immutable deploy |
@@ -56,7 +56,7 @@ $0.5417 → RATE = 541700                  // precision: $0.000001
 ## Deployment
 
 ```bash
-RATE=541700 \                                       # USDC units per 1 USDR — confirm final figure first
+RATE=532000 \                                       # USDC units per 1 USDR ($0.532, final)
 USDC=0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359 \   # native USDC (decided)
 OWNER=<gnosis-safe-address> \
 forge script script/DeployUSDRRedemption.s.sol \

@@ -10,15 +10,14 @@ import {USDRRedemption} from "../src/USDRRedemption.sol";
 /// @notice Deploys the immutable (non-upgradeable) redemption contract. All pending
 ///         values are deploy-time parameters supplied via env vars:
 ///
-///           RATE   - USDC raw units (6 dp) per 1 whole USDR. ~$0.54, exact figure TBC.
-///                    $0.54 -> 540000, $0.5417 -> 541700. CONFIRM WITH JAG BEFORE DEPLOY.
+///           RATE   - USDC raw units (6 dp) per 1 whole USDR. Final: $0.532 -> 532000.
 ///           USDC   - the USDC token paid out (decided: native USDC, not USDC.e):
 ///                      native USDC: 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359
 ///           OWNER  - the Gnosis Safe multisig that will own the contract.
 ///           USDR   - optional override; defaults to the live Polygon USDR token.
 ///
 ///         Usage:
-///           RATE=541700 \
+///           RATE=532000 \
 ///           USDC=0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359 \
 ///           OWNER=<gnosis-safe-address> \
 ///           forge script script/DeployUSDRRedemption.s.sol \
@@ -59,7 +58,7 @@ contract DeployUSDRRedemption is Script {
         address owner = vm.envAddress("OWNER");
         address usdr = vm.envOr("USDR", DEFAULT_USDR);
 
-        // Sanity rails for the ~$0.54 figure: a fat-fingered RATE (wrong decimals,
+        // Sanity rails for the $0.532 figure: a fat-fingered RATE (wrong decimals,
         // dollars instead of micro-dollars, ...) is unrecoverable post-deploy.
         require(rate >= 400_000 && rate <= 700_000, "RATE outside ~$0.40-$0.70 sanity band");
 
