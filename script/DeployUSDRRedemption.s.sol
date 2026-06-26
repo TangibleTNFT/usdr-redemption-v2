@@ -72,5 +72,25 @@ contract DeployUSDRRedemption is Script {
         console.log("  USDC :", usdc);
         console.log("  rate :", rate, "(USDC units per 1 USDR)");
         console.log("  owner:", owner);
+
+        _writeRegistry(address(redemption), usdr, usdc, rate, owner);
+        console.log("Recorded -> deployments/%s.json", vm.toString(block.chainid));
+        console.log("Verify on Polygonscan with --verify (POLYGONSCAN_API_KEY set).");
+    }
+
+    /// @dev Durable record of the deployed address (and config) for operational reference,
+    ///      so it need not be scraped from broadcast logs. Project-relative path; needs fs
+    ///      write permission (foundry.toml).
+    function _writeRegistry(address redemption, address usdr, address usdc, uint256 rate, address owner)
+        internal
+    {
+        string memory obj = "usdr-redemption-deployment";
+        vm.serializeAddress(obj, "usdr", usdr);
+        vm.serializeAddress(obj, "usdc", usdc);
+        vm.serializeUint(obj, "rate", rate);
+        vm.serializeUint(obj, "chainId", block.chainid);
+        vm.serializeAddress(obj, "owner", owner);
+        string memory json = vm.serializeAddress(obj, "redemption", redemption);
+        vm.writeJson(json, string.concat("./deployments/", vm.toString(block.chainid), ".json"));
     }
 }

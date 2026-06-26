@@ -15,6 +15,15 @@ remappings = [
     "forge-std/=lib/forge-std/src/",
 ]
 
+# The deploy script records the deployed address under ./deployments for operational reference.
+fs_permissions = [{ access = "read-write", path = "./deployments" }]
+
+# Polygonscan verification for `forge script ... --verify`. The key is read from the
+# environment so no secret lands in the repo. Get one at https://etherscan.io/myapikey
+# (Etherscan's multichain key covers Polygon, chain 137).
+[etherscan]
+polygon = { key = "${POLYGONSCAN_API_KEY}", chain = 137 }
+
 [invariant]
 runs = 64
 depth = 128
