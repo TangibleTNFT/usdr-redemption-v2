@@ -80,9 +80,7 @@ contract DeployUSDRRedemption is Script {
     /// @dev Durable record of the deployed address (and config) for operational reference,
     ///      so it need not be scraped from broadcast logs. Project-relative path; needs fs
     ///      write permission (foundry.toml).
-    function _writeRegistry(address redemption, address usdr, address usdc, uint256 rate, address owner)
-        internal
-    {
+    function _writeRegistry(address redemption, address usdr, address usdc, uint256 rate, address owner) internal {
         string memory obj = "usdr-redemption-deployment";
         vm.serializeAddress(obj, "usdr", usdr);
         vm.serializeAddress(obj, "usdc", usdc);
