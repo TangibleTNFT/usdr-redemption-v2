@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity 0.8.30;
 
 /// @title IUSDR
 /// @notice Minimal interface of the Polygon USDR token (0x40379a439D4F6795B6fc9aa5687dB461677A2dBa)
