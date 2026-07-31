@@ -30,12 +30,16 @@ import {IUSDRRedemption} from "./interfaces/IUSDRRedemption.sol";
 ///         - I2  USDC is paid only for USDR burned at the fixed rate, same transaction.
 ///         - I3  the rate is immutable.
 ///         - I4  no per-user or time-indexed accounting; user gas is O(1).
-///         - I5  the owner cannot withdraw USDC until 180 days after the last funding.
+///         - I5  the owner cannot withdraw USDC until 180 days after the last {fund} call.
+///               The clock is per-contract, not per-deposit: once that window has lapsed it
+///               stays open until the next {fund}, so USDC arriving by direct transfer in
+///               the meantime is sweepable immediately rather than serving its own 180 days.
 ///
 /// @dev    fund() is owner-only so the sweep clock can never be reset (griefed) by
 ///         third-party dust deposits. Raw USDC transfers to this contract are still
 ///         possible but do not touch the clock — they simply increase the redeemable
-///         (and eventually sweepable) balance. `lastFundingTime` is initialized to the
+///         balance, and become sweepable whenever the current window happens to lapse
+///         (immediately, if it already has). `lastFundingTime` is initialized to the
 ///         deployment timestamp so the timelock also covers any USDC received before
 ///         the first fund() call.
 ///
