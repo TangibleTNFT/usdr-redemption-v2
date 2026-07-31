@@ -160,7 +160,9 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient, IUSDRRedempti
     /// @inheritdoc IUSDRRedemption
     /// @dev Callable by the owner once 180 days have passed since the last funding (or
     ///      deployment, if never funded). Unlike {redeem}, `to` is not zero-coerced — a
-    ///      zero address reverts rather than defaulting to msg.sender.
+    ///      zero address reverts rather than defaulting to msg.sender. An empty balance
+    ///      reverts with {ZeroAmount} rather than emitting a no-op {Swept}, matching how
+    ///      {fund} rejects a zero amount.
     function sweep(address to) external override onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
         // `lastFundingTime` is a block timestamp (< 2^32 for centuries) and SWEEP_DELAY is
@@ -171,6 +173,7 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient, IUSDRRedempti
         }
         if (block.timestamp < unlockTime) revert SweepLocked(unlockTime);
         uint256 balance = availableUSDC();
+        if (balance == 0) revert ZeroAmount();
         usdc.safeTransfer(to, balance);
         emit Swept(to, balance);
     }
@@ -180,11 +183,14 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient, IUSDRRedempti
     ///      USDR is never held by this contract (burned straight from holders), so any USDR
     ///      balance is itself a stray transfer and is recoverable. The balance goes to `to`
     ///      (chosen by the owner, not necessarily the original sender); like {sweep}, `to`
-    ///      is not zero-coerced.
+    ///      is not zero-coerced and an empty balance reverts with {ZeroAmount} — which also
+    ///      turns a mistyped or already-rescued token address into a clear failure instead
+    ///      of a successful no-op.
     function rescueERC20(address token, address to) external override onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
         if (token == address(usdc)) revert CannotRescueUSDC();
         uint256 balance = IERC20(token).balanceOf(address(this));
+        if (balance == 0) revert ZeroAmount();
         IERC20(token).safeTransfer(to, balance);
         emit Rescued(token, to, balance);
     }

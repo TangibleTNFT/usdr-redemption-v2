@@ -474,14 +474,21 @@ contract USDRRedemptionTest is Test {
         redemption.sweep(address(0));
     }
 
-    function test_sweep_zeroBalanceSucceeds() public {
-        // O-30: sweeping an empty contract emits Swept(to, 0) and does not revert.
+    function test_sweep_zeroBalanceReverts() public {
+        // O-30: sweeping an empty contract reverts with ZeroAmount instead of running a
+        // full no-op through the guard, the timelock check and an external transfer.
         vm.warp(redemption.sweepUnlockTime());
-        vm.expectEmit(true, true, true, true, address(redemption));
-        emit IUSDRRedemption.Swept(bob, 0);
         vm.prank(owner);
+        vm.expectRevert(IUSDRRedemption.ZeroAmount.selector);
         redemption.sweep(bob);
         assertEq(usdc.balanceOf(bob), 0);
+
+        // A non-empty balance still sweeps normally.
+        _fund(5 * ONE_USDC);
+        vm.warp(redemption.sweepUnlockTime());
+        vm.prank(owner);
+        redemption.sweep(bob);
+        assertEq(usdc.balanceOf(bob), 5 * ONE_USDC);
     }
 
     // -----------------------------------------------------------------
@@ -529,14 +536,24 @@ contract USDRRedemptionTest is Test {
         redemption.rescueERC20(address(usdr), address(0));
     }
 
-    function test_rescue_zeroBalanceSucceeds() public {
-        // O-30: rescuing a token the contract holds none of emits Rescued(token, to, 0).
+    function test_rescue_zeroBalanceReverts() public {
+        // O-30: rescuing a token the contract holds none of reverts with ZeroAmount, so a
+        // mistyped or already-rescued token address fails clearly instead of no-opping.
         MockUSDC stray = new MockUSDC();
-        vm.expectEmit(true, true, true, true, address(redemption));
-        emit IUSDRRedemption.Rescued(address(stray), bob, 0);
         vm.prank(owner);
+        vm.expectRevert(IUSDRRedemption.ZeroAmount.selector);
         redemption.rescueERC20(address(stray), bob);
         assertEq(stray.balanceOf(bob), 0);
+
+        // With a balance present the rescue still succeeds, and rescuing twice reverts.
+        stray.mint(address(redemption), 42e6);
+        vm.startPrank(owner);
+        redemption.rescueERC20(address(stray), bob);
+        assertEq(stray.balanceOf(bob), 42e6);
+
+        vm.expectRevert(IUSDRRedemption.ZeroAmount.selector);
+        redemption.rescueERC20(address(stray), bob);
+        vm.stopPrank();
     }
 
     // -----------------------------------------------------------------

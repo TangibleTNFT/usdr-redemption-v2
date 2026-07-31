@@ -118,10 +118,12 @@ interface IUSDRRedemption {
     function fund(uint256 usdcAmount) external;
 
     /// @notice Sweeps the contract's entire USDC balance to `to` after the timelock.
+    /// @dev    Reverts with {ZeroAmount} if the contract holds no USDC.
     /// @param  to Recipient of the swept USDC.
     function sweep(address to) external;
 
     /// @notice Recovers the full balance of a stray (non-USDC) ERC-20 sent here.
+    /// @dev    Reverts with {ZeroAmount} if the contract holds none of `token`.
     /// @param  token The ERC-20 to rescue (USDC is rejected).
     /// @param  to    Recipient of the rescued balance.
     function rescueERC20(address token, address to) external;

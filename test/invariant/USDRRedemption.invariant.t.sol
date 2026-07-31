@@ -78,6 +78,7 @@ contract Handler is Test {
     function sweep() external {
         if (block.timestamp < redemption.sweepUnlockTime()) return; // respect the timelock
         uint256 bal = redemption.availableUSDC();
+        if (bal == 0) return; // sweep() rejects an empty balance with ZeroAmount
         vm.prank(owner);
         redemption.sweep(owner);
         totalSwept += bal;
