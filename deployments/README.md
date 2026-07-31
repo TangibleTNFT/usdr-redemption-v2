@@ -9,7 +9,7 @@ Polygon) on each deploy, recording the deployed address and its immutable config
   "owner": "0x…",        // Gnosis Safe multisig
   "usdr": "0x…",
   "usdc": "0x…",         // native USDC
-  "rate": 541700,        // USDC units per 1 whole USDR
+  "rate": 532000,        // USDC units per 1 whole USDR ($0.532, the final deploy value)
   "redemption": "0x…"    // the deployed USDRRedemption
 }
 ```
