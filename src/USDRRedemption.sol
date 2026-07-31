@@ -189,6 +189,18 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient, IUSDRRedempti
         emit Rescued(token, to, balance);
     }
 
+    /// @notice Disabled — ownership can only move via the two-step {transferOwnership}.
+    /// @dev Renouncing would silently strip every owner-gated path: {fund} could no longer
+    ///      replenish the reserve, {sweep} could never recover the remainder after the
+    ///      timelock, {rescueERC20} could never free a stray token, and no owner could be
+    ///      reinstated. Redemptions would keep settling until the USDC ran out and then
+    ///      revert forever, stranding the residual balance. Ownable exposes this as a
+    ///      single-step call with no confirmation, unlike the two-step handover, so it is
+    ///      overridden to always revert.
+    function renounceOwnership() public pure override {
+        revert RenounceOwnershipDisabled();
+    }
+
     // ---------------------------------------------------------------------
     // Views
     // ---------------------------------------------------------------------

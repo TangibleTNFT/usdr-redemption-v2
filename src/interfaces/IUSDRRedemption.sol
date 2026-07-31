@@ -67,6 +67,9 @@ interface IUSDRRedemption {
     error SweepLocked(uint256 unlockTime);
     /// @dev USDC can only leave via redeem or the timelocked sweep, never via rescue.
     error CannotRescueUSDC();
+    /// @dev Ownership cannot be renounced; it would permanently disable {fund}, {sweep} and
+    ///      {rescueERC20}. Use the two-step {transferOwnership} instead.
+    error RenounceOwnershipDisabled();
 
     // ---------------------------------------------------------------------
     // Config (immutables & constants)

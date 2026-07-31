@@ -686,4 +686,22 @@ contract USDRRedemptionTest is Test {
         vm.prank(owner);
         redemption.sweep(owner);
     }
+
+    function test_ownership_renounceDisabled() public {
+        // Renouncing would strand the reserve: no fund(), no sweep(), no rescueERC20(),
+        // and no way back to an owner.
+        vm.prank(owner);
+        vm.expectRevert(IUSDRRedemption.RenounceOwnershipDisabled.selector);
+        redemption.renounceOwnership();
+
+        assertEq(redemption.owner(), owner);
+
+        // Still reverts for a non-owner, and the owner keeps every gated path.
+        vm.prank(alice);
+        vm.expectRevert(IUSDRRedemption.RenounceOwnershipDisabled.selector);
+        redemption.renounceOwnership();
+
+        _fund(100 * ONE_USDC);
+        assertEq(redemption.availableUSDC(), 100 * ONE_USDC);
+    }
 }
