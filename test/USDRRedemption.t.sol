@@ -606,6 +606,57 @@ contract USDRRedemptionTest is Test {
         redemption.redeem(maxUsdr);
     }
 
+    /// @dev F-2026-18469: maxRedeemableUSDR is a conservative lower bound, not the largest
+    ///      redeemable amount, and a zero return does not prove no redemption is possible.
+    ///      Pins both at the 532_000 deploy rate with independently-derived literals, and
+    ///      exercises the band between the advertised bound and the true settlement limit.
+    function test_maxRedeemable_isLowerBoundNotMaximum() public {
+        USDRRedemption r = new USDRRedemption(address(usdr), address(usdc), 532_000, owner);
+        vm.prank(owner);
+        usdc.approve(address(r), type(uint256).max);
+        vm.prank(owner);
+        r.fund(100); // 100 raw USDC units
+
+        // The advertised bound: floor(100 * 1e9 / 532_000) = 187_969, which pays only 99.
+        assertEq(r.maxRedeemableUSDR(), 187_969);
+        assertEq(r.previewRedeem(187_969), 99);
+
+        // A strictly larger amount is also non-reverting and consumes the full balance, so
+        // the advertised value is not the maximum. floor(189_849 * 532_000 / 1e9) = 100.
+        assertEq(r.previewRedeem(189_849), 100);
+        assertGt(189_849, r.maxRedeemableUSDR());
+
+        usdr.mint(alice, 189_849);
+        vm.startPrank(alice);
+        usdr.approve(address(r), 189_849);
+        r.redeem(189_849); // the band above the bound settles fine
+        vm.stopPrank();
+        assertEq(usdc.balanceOf(alice), 100);
+        assertEq(r.availableUSDC(), 0);
+    }
+
+    function test_maxRedeemable_zeroDoesNotProveNoRedemption() public {
+        USDRRedemption r = new USDRRedemption(address(usdr), address(usdc), 532_000, owner);
+        vm.prank(owner);
+        usdc.approve(address(r), type(uint256).max);
+        vm.prank(owner);
+        r.fund(1); // 1 raw USDC unit
+
+        // floor(1 * 1e9 / 532_000) = 1879, which previews to 0, so the view reports 0.
+        assertEq(r.previewRedeem(1_879), 0);
+        assertEq(r.maxRedeemableUSDR(), 0);
+
+        // 1880 nevertheless previews to 1 and redeems: a zero return means the bound
+        // rounded down to a zero payout, not that no redemption exists.
+        assertEq(r.previewRedeem(1_880), 1);
+        usdr.mint(alice, 1_880);
+        vm.startPrank(alice);
+        usdr.approve(address(r), 1_880);
+        r.redeem(1_880);
+        vm.stopPrank();
+        assertEq(usdc.balanceOf(alice), 1);
+    }
+
     /// @dev O-26: vary the receiver through the two-arg overload; payout must land at the
     ///      resolved receiver (address(0) -> msg.sender).
     function testFuzz_redeem_receiverRouting(address receiver, uint256 usdrAmount) public {
