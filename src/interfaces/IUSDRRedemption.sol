@@ -136,8 +136,12 @@ interface IUSDRRedemption {
     /// @return The contract's USDC balance, in 6-decimal raw units.
     function availableUSDC() external view returns (uint256);
 
-    /// @notice Largest USDR amount guaranteed to redeem without reverting right now.
-    /// @return The largest non-reverting USDR amount, or 0 if none is possible.
+    /// @notice A USDR amount guaranteed to redeem without reverting right now — a conservative
+    ///         lower bound, not necessarily the largest such amount.
+    /// @return A non-reverting USDR amount, up to roughly USDR_UNIT/rate raw units below the
+    ///         true maximum (both the rate inversion and {previewRedeem} round down). Returns
+    ///         0 when that bound previews to a zero payout, which happens only at dust
+    ///         balances and does not by itself prove no redemption would succeed.
     function maxRedeemableUSDR() external view returns (uint256);
 
     /// @notice Earliest timestamp at which the owner may sweep remaining USDC.

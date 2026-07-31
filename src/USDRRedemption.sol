@@ -204,12 +204,18 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient, IUSDRRedempti
     /// @inheritdoc IUSDRRedemption
     /// @dev Rounded down, so redeeming exactly this amount always pays out within the
     ///      available balance. Intended for UIs sizing a redeem (spec R3); a conservative
-    ///      bound that can change with every block (FCFS race). At a dust balance the
-    ///      inverse-rounded amount can preview to zero (e.g. 1 raw USDC unit -> 1846 USDR,
-    ///      which {previewRedeem}s to 0 and would revert with {ZeroPayout}); this returns 0
-    ///      rather than advertising an amount {redeem} would reject.
-    /// @return m The largest USDR amount whose {previewRedeem} is non-zero and fits within
-    ///           the available USDC, or 0 when no non-reverting redemption is possible.
+    ///      bound that can change with every block (FCFS race). Inverting the rate truncates
+    ///      and {previewRedeem} truncates again, so this is a lower bound and not the true
+    ///      maximum — amounts on the order of USDR_UNIT/rate raw units larger can still
+    ///      redeem (~1880 raw USDR at the 532_000 deploy rate, under 2e-6 whole USDR). At a
+    ///      dust balance the inverse-rounded amount can preview to zero (e.g. 1 raw USDC unit
+    ///      -> 1879 USDR, which {previewRedeem}s to 0 and would revert with {ZeroPayout});
+    ///      this returns 0 rather than advertising an amount {redeem} would reject.
+    /// @return m A conservative lower bound on the USDR amount redeemable against the current
+    ///           balance: always non-reverting, but up to roughly USDR_UNIT/rate raw units
+    ///           below the true maximum. Returns 0 when the inverse-rounded amount previews
+    ///           to a zero payout, which happens only at dust balances — a zero return does
+    ///           not prove that no non-reverting redemption exists.
     function maxRedeemableUSDR() external view override returns (uint256 m) {
         m = (availableUSDC() * USDR_UNIT) / rate;
         if (previewRedeem(m) == 0) return 0; // never advertise an amount that would revert
