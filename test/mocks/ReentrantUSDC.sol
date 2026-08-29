@@ -5,11 +5,18 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {IUSDRRedemption} from "../../src/interfaces/IUSDRRedemption.sol";
 
-/// @notice Malicious 6-decimal "USDC" whose transfer re-enters {IUSDRRedemption.redeem}
-///         during the redeem payout, used to prove the nonReentrant guard trips.
+/// @notice Malicious 6-decimal "USDC" whose transfer re-enters the redemption contract
+///         during a payout ({IUSDRRedemption.redeem} or {IUSDRRedemption.claim}), used to
+///         prove the nonReentrant guard trips.
 contract ReentrantUSDC is ERC20 {
+    enum Attack {
+        None,
+        Redeem,
+        Claim
+    }
+
     IUSDRRedemption public target;
-    bool public attack;
+    Attack public attack;
 
     constructor() ERC20("Reentrant USDC", "rUSDC") {}
 
@@ -25,15 +32,17 @@ contract ReentrantUSDC is ERC20 {
         target = target_;
     }
 
-    function setAttack(bool on) external {
-        attack = on;
+    function setAttack(Attack attack_) external {
+        attack = attack_;
     }
 
-    /// @dev On the payout transfer, re-enter redeem before completing — the guard must revert.
+    /// @dev On the payout transfer, re-enter before completing — the guard must revert.
     function transfer(address to, uint256 amount) public override returns (bool) {
-        if (attack) {
-            attack = false;
-            target.redeem(1); // reverts with ReentrancyGuardReentrantCall, bubbling up
+        Attack mode = attack;
+        if (mode != Attack.None) {
+            attack = Attack.None;
+            if (mode == Attack.Redeem) target.redeem(1); // reverts with ReentrancyGuardReentrantCall
+            else target.claim();
         }
         return super.transfer(to, amount);
     }
