@@ -175,11 +175,15 @@ contract USDRRedemptionTest is Test {
         new USDRRedemption(address(usdr), address(usdc), 1, type(uint128).max, owner);
     }
 
-    function test_constructor_revertsOnExpectedFundingOverflow() public {
-        // Position.paid is uint128, so ceil(supply * rate / 1e9) must fit: with the supply at
-        // the uint128 ceiling, a rate of 2e9 doubles it past the bound.
-        vm.expectRevert(IUSDRRedemption.ConfigOverflow.selector);
-        new USDRRedemption(address(usdr), address(usdc), 2e9, type(uint128).max, owner);
+    function test_constructor_revertsOnRateAboveMax() public {
+        // The rate is capped at $1.00 per USDR; the cap is what keeps expectedFunding
+        // inside uint128 for any allowed supply (supply/1e3 < 2^128).
+        vm.expectRevert(abi.encodeWithSelector(IUSDRRedemption.RateExceedsMax.selector, 1_000_001, 1_000_000));
+        new USDRRedemption(address(usdr), address(usdc), 1_000_001, TOTAL_SUPPLY, owner);
+        // The boundary itself is fine, even at the maximal supply.
+        USDRRedemption r = new USDRRedemption(address(usdr), address(usdc), 1_000_000, type(uint128).max, owner);
+        assertEq(r.MAX_RATE(), 1_000_000);
+        assertLe(r.expectedFunding(), type(uint128).max);
     }
 
     function test_constructor_emitsDeployed() public {
@@ -542,6 +546,31 @@ contract USDRRedemptionTest is Test {
         vm.prank(alice);
         redemption.claim(address(0)); // zero-coerced to the caller
         assertEq(usdc.balanceOf(alice), 541_700_000);
+    }
+
+    function test_redeem_revertsOnSelfReceiver() public {
+        // F-2026-19266: a payout routed back to the contract would sit in the balance as
+        // unaccounted surplus that fundFromBalance could recognize as funding nobody sent.
+        _fund(EXPECTED / 100);
+        _giveUsdr(alice, ONE_USDR);
+        vm.prank(alice);
+        vm.expectRevert(IUSDRRedemption.InvalidReceiver.selector);
+        redemption.redeem(ONE_USDR, address(redemption));
+        assertEq(_shares(alice), 0); // nothing registered, nothing burned
+        assertEq(usdr.balanceOf(alice), ONE_USDR);
+    }
+
+    function test_claim_revertsOnSelfReceiver() public {
+        _fund(EXPECTED / 100);
+        _redeem(redemption, alice, 100_000 * ONE_USDR);
+        _fund(EXPECTED / 100);
+        assertGt(redemption.claimableUSDC(alice), 0);
+
+        vm.prank(alice);
+        vm.expectRevert(IUSDRRedemption.InvalidReceiver.selector);
+        redemption.claim(address(redemption));
+        // remainingFunding is untouched: no unaccounted surplus was created.
+        assertEq(redemption.remainingFunding(), EXPECTED - EXPECTED / 50);
     }
 
     function test_claim_afterRateRaise() public {
@@ -915,26 +944,35 @@ contract USDRRedemptionTest is Test {
         redemption.setRate(600_000);
     }
 
-    function test_setRate_revertsOnExpectedFundingOverflow() public {
-        // 35.9M USDR at a rate of 2^128 raw USDC per USDR overflows the uint128 `paid` bound.
-        vm.prank(owner);
-        vm.expectRevert(IUSDRRedemption.ConfigOverflow.selector);
-        redemption.setRate(uint256(type(uint128).max) + 1);
+    function test_setRate_revertsAboveMaxRate() public {
+        vm.startPrank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IUSDRRedemption.RateExceedsMax.selector, 1_000_001, 1_000_000));
+        redemption.setRate(1_000_001);
+        // A fat-fingered $533 instead of $0.533 (F-2026-19264) is rejected outright...
+        vm.expectRevert(abi.encodeWithSelector(IUSDRRedemption.RateExceedsMax.selector, 533_000_000, 1_000_000));
+        redemption.setRate(533_000_000);
+        // ...while the $1.00 ceiling itself is reachable.
+        redemption.setRate(redemption.MAX_RATE());
+        vm.stopPrank();
+        assertEq(redemption.rate(), 1_000_000);
+        assertEq(redemption.expectedFunding(), 35_909_552 * 1_000_000);
     }
 
     function test_setRate_neverClawsBack() public {
         _fund(EXPECTED / 2);
         uint256 first = _redeem(redemption, alice, 100_000 * ONE_USDR);
 
+        uint256 maxRate = redemption.MAX_RATE(); // read before prank: a view call would consume it
         vm.prank(owner);
-        redemption.setRate(RATE * 2);
+        redemption.setRate(maxRate);
 
         // The position is untouched; the payout so far stands; nothing is owed until funded.
         assertEq(_paid(alice), first);
         assertEq(redemption.claimableUSDC(alice), 0);
         assertEq(usdc.balanceOf(alice), first);
 
-        // A quarter of the new expectation: the old F is now a quarter of the way there.
+        // effectiveRate = rate * F / expectedFunding = F * 1e9 / S — the raised rate cancels,
+        // so the half-funded pot still shows half the ORIGINAL rate.
         assertEq(redemption.effectiveRate(), RATE / 2);
     }
 
@@ -1231,10 +1269,11 @@ contract USDRRedemptionTest is Test {
         assertEq(_shares(alice), usdrAmount, "shares stay with the redeemer");
     }
 
-    /// @dev O-27: the funding math must hold for any rate and supply, not just the fixture's.
+    /// @dev O-27: the funding math must hold for any allowed rate and supply, not just the
+    ///      fixture's. The rate is capped at MAX_RATE, so the full uint128 supply range fits.
     function testFuzz_expectedFunding_parameterized(uint256 rate_, uint256 supply) public {
-        rate_ = bound(rate_, 1, 1e12);
-        supply = bound(supply, 1, type(uint128).max / 1e12);
+        rate_ = bound(rate_, 1, 1_000_000);
+        supply = bound(supply, 1, type(uint128).max);
         USDRRedemption r = _deploy(rate_, supply);
 
         uint256 expected = r.expectedFunding();

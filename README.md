@@ -15,7 +15,10 @@ The contract is deployed with two numbers:
 - `totalUSDRSupply` (**S**) — the USDR population that may ever be redeemed. Tangible's agreed,
   immutable accessible-supply figure (**35,909,552 USDR**), deliberately *not* the token's
   on-chain `totalSupply()`: balances irrecoverably stuck in contracts are excluded.
-- `rate` (**R**) — the target rate, initially **$0.532** per USDR. The owner may raise it later.
+- `rate` (**R**) — the target rate, initially **$0.532** per USDR. The owner may raise it later,
+  but never lower it and never past **`MAX_RATE` = $1.00** (a $1-peg wind-down never redeems above
+  par; the cap also turns a fat-fingered rate into a revert instead of an unreachable funding
+  target — Hacken F-2026-19264).
 
 Together they define `expectedFunding = ceil(S × R / 1e9)` — the USDC needed to redeem everything
 (**19,103,881.664 USDC** at the deploy values). Tangible funds towards that figure over time via
@@ -74,6 +77,12 @@ not on every funding call. From then on the owner may `sweep`, which takes the *
 presented their USDR and holders who presented it but never claimed the remainder both forfeit what is
 left. Raising the rate after full funding un-arms the countdown until the top-up lands.
 
+Note that "fully funded" means the **entire** `expectedFunding`, including the slice corresponding
+to configured supply that can never be presented on-chain (part of the 35,909,552 figure covers
+USDR redeemed on re.al before this contract existed). That slice's USDC sits idle until the sweep
+returns it — depositing only "enough for the presentable supply" does **not** start the countdown;
+`remainingFunding()` must reach zero (Hacken F-2026-19265).
+
 Consequence to be aware of: **if full funding is never reached, no sweep is ever possible** and
 unpresented/unclaimed USDC stays in the contract. There is deliberately no rate-lowering escape hatch.
 
@@ -85,7 +94,7 @@ unpresented/unclaimed USDC stays in the contract. There is deliberately no rate-
 | `claim()` / `claim(receiver)` | anyone | Pays the caller's position whatever has become owed since its last settlement. Reverts `NothingToClaim` at zero. |
 | `fund(usdcAmount)` | owner | Pulls exactly `usdcAmount` USDC from the owner (requires prior approval and rejects a mismatched balance delta). Reverts `FundingExceedsExpected(requested, remaining)` past `expectedFunding`. The funding that reaches it stamps `fullyFundedAt` and emits `FullyFunded`. |
 | `fundFromBalance(usdcAmount)` | owner | Recognizes an existing, unaccounted USDC balance as funding. Intended to recover an accidental raw transfer; cannot count the reserve already owed to holders or exceed `expectedFunding`. |
-| `setRate(newRate)` | owner | Strictly increasing. Raises `expectedFunding`; clears `fullyFundedAt`. Nothing already paid is clawed back. |
+| `setRate(newRate)` | owner | Strictly increasing, capped at `MAX_RATE` ($1.00). Raises `expectedFunding`; clears `fullyFundedAt`. Nothing already paid is clawed back. |
 | `sweep(to)` | owner | From `fullyFundedAt + 180 days`: transfers the whole balance out and sets `closed`. The first sweep closes even at a zero balance; a later empty sweep reverts. Reverts `SweepLocked(unlockTime)` before (`unlockTime = type(uint256).max` while under-funded). Stays callable after closing for USDC that lands later. |
 | `rescueERC20(token, to)` | owner | Recovers stray tokens; **rejects USDC** so the timelock cannot be bypassed. |
 | `expectedFunding()` / `remainingFunding()` / `isFullyFunded()` | view | Funding target, exact top-up, and whether it has been reached. |
@@ -118,7 +127,7 @@ $0.5417 → RATE = 541700                                     // precision: $0.0
 
 | Parameter | Value |
 |---|---|
-| Rate — **$0.532** (`RATE = 532000`) | initial; owner-raisable |
+| Rate — **$0.532** (`RATE = 532000`) | initial; owner-raisable up to `MAX_RATE = 1000000` ($1.00) |
 | Total supply — **35,909,552 USDR** (`TOTAL_SUPPLY = 35909552000000000`) | immutable |
 | USDC token — **native USDC** (`0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`), not USDC.e | immutable |
 | Sweep delay | fixed at `180 days` after full funding |

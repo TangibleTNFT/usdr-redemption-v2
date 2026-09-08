@@ -62,9 +62,10 @@ import {IUSDRRedemption} from "./interfaces/IUSDRRedemption.sol";
 ///         - I6  `totalFunded <= expectedFunding` and `totalShares <= S`.
 ///         - I7  the first sweep closes the contract for good.
 ///
-/// @dev    Overflow bounds: the constructor requires `S <= type(uint128).max`, and both the
-///         constructor and {setRate} require `expectedFunding <= type(uint128).max`
-///         ({ConfigOverflow}). Hence `shares <= S` and `paid <= entitled <= F <= expectedFunding`
+/// @dev    Overflow bounds: the constructor requires `S <= type(uint128).max`
+///         ({ConfigOverflow}) and the rate is capped at {MAX_RATE} ($1.00), so
+///         `expectedFunding <= ceil(S / 1e3) < 2^128` by construction. Hence
+///         `shares <= S` and `paid <= entitled <= F <= expectedFunding`
 ///         provably fit the packed uint128 fields of {Position}, and every product formed
 ///         here is computed with {Math.mulDiv} (512-bit intermediate) anyway.
 ///
@@ -90,6 +91,12 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient, IUSDRRedempti
 
     /// @inheritdoc IUSDRRedemption
     uint256 public constant override SWEEP_DELAY = 180 days;
+
+    /// @inheritdoc IUSDRRedemption
+    /// @dev $1.00 per whole USDR. Bounds {expectedFunding} to `totalUSDRSupply / 1e3` raw
+    ///      USDC (< 2^128 given the supply bound), and turns a fat-fingered {setRate} into
+    ///      a revert instead of an unreachable funding target (F-2026-19264).
+    uint256 public constant override MAX_RATE = 1_000_000;
 
     /// @inheritdoc IUSDRRedemption
     IUSDR public immutable override usdr;
@@ -153,10 +160,11 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient, IUSDRRedempti
         if (usdr_ == address(0) || usdc_ == address(0)) revert ZeroAddress();
         if (usdr_ == usdc_) revert IdenticalTokens();
         if (rate_ == 0) revert ZeroRate();
+        if (rate_ > MAX_RATE) revert RateExceedsMax(rate_, MAX_RATE);
         if (totalSupply_ == 0) revert ZeroTotalSupply();
-        // Bound the packed Position fields (see the contract-level @dev).
+        // Bound the packed Position fields (see the contract-level @dev): with the supply
+        // capped to uint128 and the rate capped to MAX_RATE, expectedFunding fits too.
         if (totalSupply_ > type(uint128).max) revert ConfigOverflow();
-        if (_expectedFunding(totalSupply_, rate_) > type(uint128).max) revert ConfigOverflow();
 
         // Commit constructor state before querying the external token contracts. Any failed
         // metadata check still reverts creation and all of these assignments atomically.
@@ -200,6 +208,9 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient, IUSDRRedempti
 
     function _redeem(uint256 usdrAmount, address receiver) internal nonReentrant whenOpen returns (uint256 usdcAmount) {
         if (usdrAmount == 0) revert ZeroAmount();
+        // A self-receiver would park the payout in this contract as unaccounted surplus that
+        // {fundFromBalance} could recognize as funding nobody deposited (F-2026-19266).
+        if (receiver == address(this)) revert InvalidReceiver();
         uint256 remaining = totalUSDRSupply - totalShares;
         if (usdrAmount > remaining) revert ShareCapExceeded(usdrAmount, remaining);
 
@@ -220,6 +231,8 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient, IUSDRRedempti
     }
 
     function _claim(address receiver) internal nonReentrant whenOpen returns (uint256 usdcAmount) {
+        // See {_redeem}: the payout must actually leave the contract (F-2026-19266).
+        if (receiver == address(this)) revert InvalidReceiver();
         usdcAmount = _settle(positions[msg.sender]);
         if (usdcAmount == 0) revert NothingToClaim();
 
@@ -290,8 +303,10 @@ contract USDRRedemption is Ownable2Step, ReentrancyGuardTransient, IUSDRRedempti
     function setRate(uint256 newRate) external override onlyOwner whenOpen {
         uint256 oldRate = rate;
         if (newRate <= oldRate) revert RateNotIncreasing(oldRate, newRate);
+        // Capped at $1.00 so a mistyped rate cannot create an economically unreachable
+        // funding target that would keep the sweep locked forever (F-2026-19264).
+        if (newRate > MAX_RATE) revert RateExceedsMax(newRate, MAX_RATE);
         uint256 expected = _expectedFunding(totalUSDRSupply, newRate);
-        if (expected > type(uint128).max) revert ConfigOverflow();
 
         rate = newRate;
         if (totalFunded != expected) fullyFundedAt = 0;

@@ -108,11 +108,15 @@ interface IUSDRRedemption {
     error IdenticalTokens();
     /// @dev USDR must report 9 decimals and USDC 6, matching USDR_UNIT and the rate's units.
     error UnexpectedDecimals();
-    /// @dev `totalUSDRSupply` or the resulting {expectedFunding} does not fit the uint128
-    ///      fields of {Position}. Raised by the constructor and by {setRate}.
+    /// @dev `totalUSDRSupply` does not fit the uint128 `shares` field of {Position}.
     error ConfigOverflow();
     /// @dev The rate may only ever be raised; `proposed` was not greater than `current`.
     error RateNotIncreasing(uint256 current, uint256 proposed);
+    /// @dev The rate is capped at {MAX_RATE} ($1.00 per USDR): a wind-down of a $1-peg
+    ///      stablecoin never redeems above par, and the cap turns a fat-fingered rate
+    ///      (e.g. 533_000_000 instead of 533_000) into a revert instead of an
+    ///      unreachable funding target that would lock residual USDC forever.
+    error RateExceedsMax(uint256 proposed, uint256 max);
     /// @dev Funding beyond {expectedFunding} is rejected; `remaining` is the exact amount
     ///      that would top the contract up to full funding (see {remainingFunding}).
     error FundingExceedsExpected(uint256 requested, uint256 remaining);
@@ -127,6 +131,10 @@ interface IUSDRRedemption {
     error ShareCapExceeded(uint256 requested, uint256 remaining);
     /// @dev The caller's position is owed nothing at the current funding level.
     error NothingToClaim();
+    /// @dev The USDC receiver may not be this contract itself: the payout would sit in the
+    ///      balance as unaccounted surplus that {fundFromBalance} could then recognize as
+    ///      funding no one actually deposited.
+    error InvalidReceiver();
     /// @dev Sweep attempted before the timelock expired; unlocked at `unlockTime`
     ///      (`type(uint256).max` while the contract is not yet fully funded).
     error SweepLocked(uint256 unlockTime);
@@ -149,6 +157,12 @@ interface IUSDRRedemption {
     /// @notice Time after full funding before the owner may sweep ("6 months").
     function SWEEP_DELAY() external view returns (uint256);
 
+    /// @notice Hard ceiling on the rate: 1_000_000 raw USDC units = $1.00 per whole USDR.
+    /// @dev USDR is a $1-peg wind-down, so redeeming above par is meaningless; the cap
+    ///      bounds {expectedFunding} at `totalUSDRSupply / 1e3` raw USDC and rejects
+    ///      misconfigured rates at the constructor and in {setRate}.
+    function MAX_RATE() external view returns (uint256);
+
     /// @notice The USDR token (9 decimals); burned from redeemers via allowance.
     function usdr() external view returns (IUSDR);
 
@@ -162,9 +176,9 @@ interface IUSDRRedemption {
     function totalUSDRSupply() external view returns (uint256);
 
     /// @notice Target redemption rate in USDC raw units (6 decimals) per 1 whole USDR.
-    /// @dev Monotonic: the owner may only ever raise it ({setRate}). The rate does not appear
-    ///      in the payout formula; it defines {expectedFunding} — where "fully funded" sits —
-    ///      and therefore what a share is ultimately worth.
+    /// @dev Monotonic: the owner may only ever raise it ({setRate}), never past {MAX_RATE}.
+    ///      The rate does not appear in the payout formula; it defines {expectedFunding} —
+    ///      where "fully funded" sits — and therefore what a share is ultimately worth.
     function rate() external view returns (uint256);
 
     // ---------------------------------------------------------------------
@@ -207,7 +221,8 @@ interface IUSDRRedemption {
     /// @notice Same as {redeem}, paying the USDC to `receiver`.
     /// @dev    The shares are always credited to msg.sender; only the USDC goes to `receiver`.
     /// @param  usdrAmount Amount of USDR to present, in 9-decimal raw units.
-    /// @param  receiver   USDC recipient; address(0) is treated as msg.sender.
+    /// @param  receiver   USDC recipient; address(0) is treated as msg.sender. This contract
+    ///                    itself is rejected with {InvalidReceiver}.
     /// @return usdcAmount USDC paid out in this call, in 6-decimal raw units.
     function redeem(uint256 usdrAmount, address receiver) external returns (uint256 usdcAmount);
 
@@ -218,7 +233,8 @@ interface IUSDRRedemption {
     function claim() external returns (uint256 usdcAmount);
 
     /// @notice Same as {claim}, paying the USDC to `receiver`.
-    /// @param  receiver USDC recipient; address(0) is treated as msg.sender.
+    /// @param  receiver USDC recipient; address(0) is treated as msg.sender. This contract
+    ///                  itself is rejected with {InvalidReceiver}.
     /// @return usdcAmount USDC paid out, in 6-decimal raw units.
     function claim(address receiver) external returns (uint256 usdcAmount);
 
@@ -230,7 +246,10 @@ interface IUSDRRedemption {
     /// @dev    Reverts with {FundingExceedsExpected} if it would push {totalFunded} past
     ///         {expectedFunding}; {remainingFunding} reports the exact amount that fits. The
     ///         funding that reaches {expectedFunding} stamps {fullyFundedAt} and starts the
-    ///         180-day sweep countdown. The USDC balance must increase by exactly `usdcAmount`;
+    ///         180-day sweep countdown — note the countdown arms only at FULL funding, which
+    ///         includes the slice for any configured supply that can never be presented
+    ///         on-chain (that slice returns to the owner via {sweep}). The USDC balance must
+    ///         increase by exactly `usdcAmount`;
     ///         otherwise the call reverts with {FundingReceiptMismatch} and no funding is
     ///         recorded.
     /// @param  usdcAmount USDC to pull in, in 6-decimal raw units.
@@ -244,13 +263,14 @@ interface IUSDRRedemption {
     /// @param  usdcAmount Existing, unaccounted USDC to add to {totalFunded}.
     function fundFromBalance(uint256 usdcAmount) external;
 
-    /// @notice Raises the redemption rate. The rate can never be lowered.
+    /// @notice Raises the redemption rate, up to {MAX_RATE}. The rate can never be lowered.
     /// @dev    Raises {expectedFunding}, so more USDC may be funded and every share — including
     ///         those of accounts that already redeemed — becomes worth more once it is. Nothing
     ///         already paid is ever clawed back. Because the contract is no longer fully
     ///         funded afterwards, {fullyFundedAt} is cleared and the sweep countdown restarts
     ///         when the top-up lands.
-    /// @param  newRate New rate in USDC raw units per whole USDR; must exceed the current rate.
+    /// @param  newRate New rate in USDC raw units per whole USDR; must exceed the current
+    ///                  rate and not exceed {MAX_RATE}.
     function setRate(uint256 newRate) external;
 
     /// @notice Sweeps the contract's entire USDC balance to `to` and permanently closes the

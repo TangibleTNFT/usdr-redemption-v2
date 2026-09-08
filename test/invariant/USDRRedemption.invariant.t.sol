@@ -122,7 +122,9 @@ contract Handler is Test {
     function setRate(uint256 bump) external {
         if (redemption.closed()) return;
         uint256 current = redemption.rate();
-        bump = bound(bump, 1, 100_000); // up to +$0.10 per call
+        uint256 headroom = redemption.MAX_RATE() - current;
+        if (headroom == 0) return; // the $1.00 ceiling has been reached
+        bump = bound(bump, 1, headroom < 100_000 ? headroom : 100_000); // up to +$0.10 per call
         vm.prank(owner);
         redemption.setRate(current + bump);
 
@@ -252,6 +254,7 @@ contract USDRRedemptionInvariants is Test {
     function invariant_rateMonotonic() public view {
         assertEq(redemption.rate(), handler.lastObservedRate());
         assertGe(redemption.rate(), RATE);
+        assertLe(redemption.rate(), redemption.MAX_RATE());
     }
 
     /// @notice Value conservation: every USDC in (funded + donated) equals every USDC out
