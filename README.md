@@ -15,7 +15,7 @@ The contract is deployed with two numbers:
 - `totalUSDRSupply` (**S**) — the USDR population that may ever be redeemed. Tangible's agreed,
   immutable accessible-supply figure (**35,909,552 USDR**), deliberately *not* the token's
   on-chain `totalSupply()`: balances irrecoverably stuck in contracts are excluded.
-- `rate` (**R**) — the target rate, initially **$0.532** per USDR. The owner may raise it later,
+- `rate` (**R**) — the target rate, initially **$0.535516** per USDR. The owner may raise it later,
   but never lower it and never past **`MAX_RATE` = $1.00** (a $1-peg wind-down never redeems above
   par; the cap also turns a fat-fingered rate into a revert instead of an unreachable funding
   target — Hacken F-2026-19264).
@@ -119,7 +119,7 @@ never change, and the rate can only go up.
 ```
 expectedFunding = ceil(totalUSDRSupply * rate / 1e9)
 entitled(shares) = shares * totalFunded / totalUSDRSupply   // floor
-$0.532  → RATE = 532000                                     // deploy value
+$0.535516 → RATE = 535516                                   // deploy value
 $0.5417 → RATE = 541700                                     // precision: $0.000001
 ```
 
@@ -127,7 +127,7 @@ $0.5417 → RATE = 541700                                     // precision: $0.0
 
 | Parameter | Value |
 |---|---|
-| Rate — **$0.532** (`RATE = 532000`) | initial; owner-raisable up to `MAX_RATE = 1000000` ($1.00) |
+| Rate — **$0.535516** (`RATE = 535516`, GBP/USD 1.3305 on 2026-10-19) | initial; owner-raisable up to `MAX_RATE = 1000000` ($1.00) |
 | Total supply — **35,909,552 USDR** (`TOTAL_SUPPLY = 35909552000000000`) | immutable |
 | USDC token — **native USDC** (`0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`), not USDC.e | immutable |
 | Sweep delay | fixed at `180 days` after full funding |

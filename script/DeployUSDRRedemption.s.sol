@@ -62,8 +62,8 @@ contract DeployUSDRRedemption is Script {
     /// @dev Native Circle USDC on Polygon, deliberately not bridged USDC.e.
     address internal constant USDC = 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359;
 
-    /// @dev Initial $0.532 per USDR. The owner may only raise it after deployment.
-    uint256 internal constant RATE = 532_000;
+    /// @dev Initial $0.535516 per USDR (live GBP/USD 1.3305 on 2026-10-19). The owner may only raise it.
+    uint256 internal constant RATE = 535_516;
 
     /// @dev Tangible's agreed accessible supply: 35,909,552 USDR. Immutable denominator.
     uint256 internal constant TOTAL_USDR_SUPPLY = 35_909_552e9;
