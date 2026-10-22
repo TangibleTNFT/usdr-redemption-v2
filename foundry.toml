@@ -16,7 +16,11 @@ remappings = [
 ]
 
 # The deploy script records the deployed address under ./deployments for operational reference.
-fs_permissions = [{ access = "read-write", path = "./deployments" }]
+fs_permissions = [
+    { access = "read-write", path = "./deployments" },
+    { access = "read", path = "./src" },
+    { access = "read-write", path = "./testnet" },
+]
 
 # Polygonscan verification for `forge script ... --verify`. The key is read from the
 # environment so no secret lands in the repo. Get one at https://etherscan.io/myapikey
