@@ -26,7 +26,7 @@ The contract is deployed with two numbers:
   target — Hacken F-2026-19264).
 
 Together they define `expectedFunding = ceil(S × R / 1e9)` — the USDC needed to redeem everything
-(**19,103,881.664 USDC** at the deploy values). Tangible funds towards that figure over time via
+(**19,230,139.648832 USDC** at the deploy values: S = 35,909,552 USDR, R = $0.535516). Tangible funds towards that figure over time via
 `fund`, which rejects anything beyond it; `remainingFunding()` gives the exact top-up.
 
 A holder approves the contract for USDR and calls `redeem(x)`. In one transaction the contract:
@@ -45,10 +45,10 @@ and each `redeem` or `claim` pays `entitled − paid`. **The rate is not in that
 payout is its slice of what has actually been funded; the rate only fixes where "fully funded" sits.
 When more USDC is funded later, the holder calls `claim()` (no USDR needed) for the difference.
 
-**Worked example** (S = 35,909,552 USDR, R = $0.532, expected = 19,103,881.664 USDC). Tangible funds
-1 % (191,038.81664 USDC). A holder presenting 100,000 USDR receives 100,000 × 191,038.81664 / 35,909,552
-= **532 USDC** — 1 % of the 53,200 USDC the position is worth at full funding — and no more, however fast
-they are. The rate is then raised to $0.60 (expected becomes 21,545,731.20 USDC); nothing changes until
+**Worked example** (S = 35,909,552 USDR, R = $0.535516, expected = 19,230,139.648832 USDC). Tangible
+funds 1 % (192,301.396488 USDC). A holder presenting 100,000 USDR receives 100,000 × 192,301.396488 /
+35,909,552 = **535.515999 USDC** (1 % of the 53,551.6 USDC the position is worth at full funding, less
+one raw unit of rounding) and no more, however fast they are. The rate is then raised to $0.60 (expected becomes 21,545,731.20 USDC); nothing changes until
 the difference is funded, after which `claim()` brings the holder's lifetime total to exactly
 **60,000 USDC**.
 
@@ -147,7 +147,8 @@ forge script script/DeployUSDRRedemption.s.sol \
 ```
 
 The production script is Polygon-only and hardcodes the USDR address, native-USDC address, initial
-`$0.532` rate and `35,909,552 USDR` accessible-supply denominator. It accepts only the owner address,
+`$0.535516` rate (set from the live GBP/USD rate on deploy day, 2026-10-19) and `35,909,552 USDR`
+accessible-supply denominator. It accepts only the owner address,
 requires that address to contain deployed code, and logs the on-chain `totalSupply()` next to the
 accessible figure for the broadcast record. The broadcast signer must independently verify that
 `OWNER` is Tangible's approved Safe; bytecode presence alone cannot establish that identity.
