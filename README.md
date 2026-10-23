@@ -5,8 +5,11 @@ exactly their share of the USDC Tangible has funded so far — no first-come-fir
 epochs, no KYC. The rate can be raised by the owner but never lowered, and nobody receives more or
 less for redeeming earlier or later.
 
-> The audit report in `audit/` covers the previous, stateless FCFS design. The pro-rata model
-> described here supersedes it and has not been audited yet.
+> **Audit:** this pro-rata contract was audited by Hacken in September 2026:
+> [report](https://hacken.io/audits/tangible-usdr/sca-tangible-usdr-usdr-redemption-v2-sep2026/).
+> The fixes for its findings are in commit `62d30b0`; `src/` is unchanged since then, so the
+> deployed contract is the audited code. The older PDF in `audit/` covers the previous, stateless
+> FCFS design, which this contract replaces.
 
 ## How it works
 
